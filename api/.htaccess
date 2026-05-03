@@ -1,0 +1,6 @@
+# Block direct browser access to all files in api/ folder.
+# These files are internal PHP modules — only PHP require/include should use them.
+<FilesMatch "^(env|security|db|generate-hash|test-login|config)\.php$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

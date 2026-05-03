@@ -1,0 +1,63 @@
+RewriteEngine On
+
+# ── HTTPS Redirect ─────────────────────────────────────────────────────────────
+# Uncomment on live server (leave commented on localhost/XAMPP)
+# RewriteCond %{HTTPS} off
+# RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+
+# ── Block sensitive files ──────────────────────────────────────────────────────
+# Block .env files at any location
+<FilesMatch "^\.env(\..*)?$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# ── Security Headers ───────────────────────────────────────────────────────────
+<IfModule mod_headers.c>
+    # Prevent MIME-type sniffing
+    Header always set X-Content-Type-Options "nosniff"
+    # Prevent clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+    # XSS protection (legacy browsers)
+    Header always set X-XSS-Protection "1; mode=block"
+    # Referrer policy — don't leak URL to third parties
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    # Content Security Policy — adjust if you use external CDN fonts
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none';"
+    # Remove server signature
+    Header always unset X-Powered-By
+    Header always unset Server
+    # No cache for sensitive pages
+    <FilesMatch "\.(php)$">
+        Header always set Cache-Control "no-store, no-cache, must-revalidate"
+        Header always set Pragma "no-cache"
+    </FilesMatch>
+</IfModule>
+
+# ── Alias URL (Pretty URLs) ────────────────────────────────────────────────────
+# Sembunyikan .php — akses /login, /admin, /user dst tanpa ekstensi
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^([^/]+)$ $1.php [L]
+
+# Alias subfolder: /admin/* → admin/*.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(admin|user)/([^/]+)$ $1/$2.php [L]
+
+# Shortcut aliases dashboard
+RewriteRule ^dashboard/?$        admin/index.php  [R=302,L]
+RewriteRule ^dashboard/config/?$ admin/config.php [R=302,L]
+RewriteRule ^dashboard/log/?$    admin/audit-log.php [R=302,L]
+RewriteRule ^dashboard/wa/?$     admin/wa-devices.php [R=302,L]
+RewriteRule ^workspace/?$        user/index.php   [R=302,L]
+RewriteRule ^workspace/wa/?$     user/wa-devices.php [R=302,L]
+
+# Route legacy HTML entry points ke PHP
+RewriteRule ^login\.html$      login.php      [R=302,L]
+RewriteRule ^index\.html$      index.php      [R=302,L]
+RewriteRule ^wa-devices\.html$ wa-devices.php [R=302,L]
+RewriteRule ^config\.html$     config.php     [R=302,L]
+
+# Blok akses langsung ke folder api/ via browser (hanya izinkan XHR/fetch)
+RewriteRule ^api/(?!.*\.php$) - [F,L]

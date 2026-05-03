@@ -1,0 +1,13 @@
+# Environment secrets
+.env
+.env.*
+!.env_example
+
+# Dependencies / build artifacts
+node_modules/
+vendor/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.log
