@@ -17,10 +17,12 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT }}
+          envs: GITHUB_TOKEN,GITHUB_REPOSITORY
           script: |
             set -e
             git config --global --add safe.directory "${{ secrets.SERVER_PATH }}"
             cd "${{ secrets.SERVER_PATH }}"
+            git remote set-url origin "https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git"
             git fetch origin
             git reset --hard origin/master
             find . -type d -exec chmod 755 {} \;
