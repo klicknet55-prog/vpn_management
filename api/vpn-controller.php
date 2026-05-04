@@ -60,6 +60,7 @@ try {
     $db = getDB();
     ensureVpnUsersTable($db);
     ensureVpnPortForwardingsTable($db);
+    ensureProxyRoutesTable($db);
 
     $vpnConfig = null;
 
@@ -109,6 +110,21 @@ try {
         case 'delete_port_forwarding':
             $vpnConfig = loadVpnApiConfig($db);
             handleDeletePortForwarding($db, $vpnConfig, $payload, $currentUserId);
+            break;
+        case 'list_proxy_routes':
+            handleListProxyRoutes($db, $currentUserId);
+            break;
+        case 'create_proxy_route':
+            $vpnConfig = loadVpnApiConfig($db);
+            handleCreateProxyRoute($db, $vpnConfig, $payload, $currentUserId);
+            break;
+        case 'delete_proxy_route':
+            $vpnConfig = loadVpnApiConfig($db);
+            handleDeleteProxyRoute($db, $vpnConfig, $payload, $currentUserId);
+            break;
+        case 'check_subdomain':
+            $vpnConfig = loadVpnApiConfig($db);
+            handleCheckSubdomain($vpnConfig, $payload);
             break;
         case 'sync_server':
             $vpnConfig = loadVpnApiConfig($db);
@@ -314,6 +330,7 @@ function loadVpnApiConfig(PDO $db): array
         'vpn.auth_scheme',
         'vpn.endpoint_users',
         'vpn.endpoint_port_forwardings',
+        'vpn.endpoint_proxy_routes',
         'vpn.subnet_prefix',
         'vpn.ip_range_start',
         'vpn.ip_range_end',
@@ -326,6 +343,7 @@ function loadVpnApiConfig(PDO $db): array
 
     $endpointUsers = '/' . ltrim((string) ($settings['vpn.endpoint_users'] ?? '/users'), '/');
     $endpointPortForwardings = '/' . ltrim((string) ($settings['vpn.endpoint_port_forwardings'] ?? '/port-forwardings'), '/');
+    $endpointProxyRoutes = '/' . ltrim((string) ($settings['vpn.endpoint_proxy_routes'] ?? '/proxy-routes'), '/');
 
     $baseUrl = rtrim(trim((string) ($row['base_url'] ?? '')), '/');
     if ($baseUrl === '') {
@@ -340,6 +358,7 @@ function loadVpnApiConfig(PDO $db): array
         'access_token' => trim((string) ($row['access_token'] ?? '')),
         'endpoint_users' => $endpointUsers,
         'endpoint_port_forwardings' => $endpointPortForwardings,
+        'endpoint_proxy_routes' => $endpointProxyRoutes,
         'timeout' => max(3, (int) ($row['request_timeout_seconds'] ?? 30)),
         'subnet_prefix' => trim((string) ($settings['vpn.subnet_prefix'] ?? '192.168.12')),
         'ip_range_start' => max(1, (int) ($settings['vpn.ip_range_start'] ?? 2)),
@@ -862,6 +881,232 @@ function assertPortForwardingAccess(PDO $db, string $name, int $actorUserId): vo
         throw new RuntimeException('Anda tidak memiliki akses ke port forwarding tersebut.');
     }
 }
+
+/* ===================================================================== */
+/* Proxy Routes                                                           */
+/* ===================================================================== */
+
+function ensureProxyRoutesTable(PDO $db): void
+{
+    $db->exec(
+        "CREATE TABLE IF NOT EXISTS vpn_proxy_routes (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            owner_user_id BIGINT UNSIGNED NULL,
+            name VARCHAR(100) NOT NULL UNIQUE,
+            subdomain VARCHAR(100) NOT NULL UNIQUE,
+            domain VARCHAR(253) NOT NULL UNIQUE,
+            port_forward_name VARCHAR(100) NOT NULL,
+            upstream_ip VARCHAR(45) NOT NULL,
+            upstream_port INT UNSIGNED NOT NULL,
+            ssl_enabled TINYINT(1) NOT NULL DEFAULT 1,
+            status VARCHAR(20) NOT NULL DEFAULT 'active',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_proxy_owner (owner_user_id)
+        ) ENGINE=InnoDB"
+    );
+    try {
+        $db->exec('CREATE INDEX idx_proxy_owner ON vpn_proxy_routes (owner_user_id)');
+    } catch (Throwable $e) {
+        // Index may already exist.
+    }
+}
+
+function handleListProxyRoutes(PDO $db, int $actorUserId): void
+{
+    $isAdmin = isCurrentUserAdmin();
+
+    $sql =
+        'SELECT pr.id, pr.owner_user_id, pr.name, pr.subdomain, pr.domain, pr.port_forward_name,
+                pr.upstream_ip, pr.upstream_port, pr.ssl_enabled, pr.status, pr.created_at, pr.updated_at,
+                u.full_name AS owner_name, u.email AS owner_email
+         FROM vpn_proxy_routes pr
+         LEFT JOIN users u ON u.id = pr.owner_user_id';
+
+    if (!$isAdmin) {
+        $sql .= ' WHERE pr.owner_user_id = :owner_user_id';
+    }
+
+    $sql .= ' ORDER BY pr.created_at DESC, pr.id DESC';
+
+    $stmt = $db->prepare($sql);
+    if ($isAdmin) {
+        $stmt->execute();
+    } else {
+        $stmt->execute(['owner_user_id' => $actorUserId]);
+    }
+
+    $rows = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $rows[] = [
+            'id' => (int) ($row['id'] ?? 0),
+            'owner_user_id' => (int) ($row['owner_user_id'] ?? 0),
+            'owner_name' => (string) ($row['owner_name'] ?? ''),
+            'owner_email' => (string) ($row['owner_email'] ?? ''),
+            'name' => (string) ($row['name'] ?? ''),
+            'subdomain' => (string) ($row['subdomain'] ?? ''),
+            'domain' => (string) ($row['domain'] ?? ''),
+            'port_forward_name' => (string) ($row['port_forward_name'] ?? ''),
+            'upstream_ip' => (string) ($row['upstream_ip'] ?? ''),
+            'upstream_port' => (int) ($row['upstream_port'] ?? 0),
+            'ssl_enabled' => (bool) ($row['ssl_enabled'] ?? 1),
+            'status' => (string) ($row['status'] ?? 'active'),
+            'created_at' => (string) ($row['created_at'] ?? ''),
+            'updated_at' => (string) ($row['updated_at'] ?? ''),
+        ];
+    }
+
+    echo json_encode([
+        'status' => 'success',
+        'code' => 200,
+        'data' => ['items' => $rows, 'count' => count($rows)],
+    ]);
+}
+
+function handleCreateProxyRoute(PDO $db, array $vpnConfig, array $payload, int $actorUserId): void
+{
+    $name = normalizeVpnName((string) ($payload['name'] ?? ''));
+    $subdomain = strtolower(preg_replace('/[^a-z0-9\-]/', '', strtolower(trim((string) ($payload['subdomain'] ?? '')))));
+    $portForwardName = normalizeVpnName((string) ($payload['port_forward_name'] ?? ''));
+
+    if ($name === '' || $subdomain === '' || $portForwardName === '') {
+        throw new RuntimeException('name, subdomain, dan port_forward_name wajib diisi.');
+    }
+    if (!preg_match('/^[a-z0-9][a-z0-9\-]{0,62}$/', $subdomain)) {
+        throw new RuntimeException('Subdomain hanya boleh huruf kecil, angka, dan tanda hubung. Maksimal 63 karakter.');
+    }
+
+    $endpoint = rtrim((string) ($vpnConfig['endpoint_proxy_routes'] ?? '/proxy-routes'), '/');
+    $res = vpnApiRequest($vpnConfig, 'POST', $endpoint, [
+        'name' => $name,
+        'subdomain' => $subdomain,
+        'port_forward_name' => $portForwardName,
+    ]);
+
+    if (!$res['ok']) {
+        throw new RuntimeException('VPN API create proxy route gagal: ' . $res['error']);
+    }
+
+    $data = $res['data'];
+    $domain = (string) ($data['domain'] ?? '');
+    $upstreamIp = (string) ($data['upstream_ip'] ?? '');
+    $upstreamPort = (int) ($data['upstream_port'] ?? 0);
+    $sslEnabled = isset($data['ssl_enabled']) ? (int) $data['ssl_enabled'] : 1;
+
+    $stmt = $db->prepare(
+        "INSERT INTO vpn_proxy_routes
+            (owner_user_id, name, subdomain, domain, port_forward_name, upstream_ip, upstream_port, ssl_enabled, status, created_at, updated_at)
+         VALUES
+            (:owner_user_id, :name, :subdomain, :domain, :port_forward_name, :upstream_ip, :upstream_port, :ssl_enabled, 'active', NOW(), NOW())
+         ON DUPLICATE KEY UPDATE
+            owner_user_id = VALUES(owner_user_id),
+            domain = VALUES(domain),
+            port_forward_name = VALUES(port_forward_name),
+            upstream_ip = VALUES(upstream_ip),
+            upstream_port = VALUES(upstream_port),
+            ssl_enabled = VALUES(ssl_enabled),
+            status = 'active',
+            updated_at = NOW()"
+    );
+    $stmt->execute([
+        'owner_user_id' => $actorUserId > 0 ? $actorUserId : null,
+        'name' => $name,
+        'subdomain' => $subdomain,
+        'domain' => $domain,
+        'port_forward_name' => $portForwardName,
+        'upstream_ip' => $upstreamIp,
+        'upstream_port' => $upstreamPort,
+        'ssl_enabled' => $sslEnabled,
+    ]);
+
+    writeVpnAuditLog($db, $actorUserId, 'proxy_route_create', 'proxy_route', $name, [
+        'name' => $name,
+        'subdomain' => $subdomain,
+        'domain' => $domain,
+        'port_forward_name' => $portForwardName,
+        'upstream_ip' => $upstreamIp,
+        'upstream_port' => $upstreamPort,
+        'owner_user_id' => $actorUserId > 0 ? $actorUserId : null,
+    ]);
+
+    echo json_encode([
+        'status' => 'success',
+        'code' => 200,
+        'message' => 'Proxy route berhasil dibuat.',
+        'data' => [
+            'name' => $name,
+            'subdomain' => $subdomain,
+            'domain' => $domain,
+            'upstream_ip' => $upstreamIp,
+            'upstream_port' => $upstreamPort,
+            'ssl_enabled' => (bool) $sslEnabled,
+        ],
+    ]);
+}
+
+function handleDeleteProxyRoute(PDO $db, array $vpnConfig, array $payload, int $actorUserId): void
+{
+    $name = normalizeVpnName((string) ($payload['name'] ?? ''));
+    if ($name === '') {
+        throw new RuntimeException('name wajib diisi.');
+    }
+
+    $isAdmin = isCurrentUserAdmin();
+    if (!$isAdmin) {
+        $stmt = $db->prepare('SELECT owner_user_id FROM vpn_proxy_routes WHERE name = :name LIMIT 1');
+        $stmt->execute(['name' => $name]);
+        $ownerRaw = $stmt->fetchColumn();
+        if ($ownerRaw === false) {
+            throw new RuntimeException('Proxy route tidak ditemukan.');
+        }
+        if ((int) $ownerRaw !== $actorUserId) {
+            throw new RuntimeException('Anda tidak memiliki akses ke proxy route tersebut.');
+        }
+    }
+
+    $endpoint = rtrim((string) ($vpnConfig['endpoint_proxy_routes'] ?? '/proxy-routes'), '/');
+    $res = vpnApiRequest($vpnConfig, 'DELETE', $endpoint . '/' . rawurlencode($name));
+
+    if (!$res['ok'] && $res['status'] !== 404) {
+        throw new RuntimeException('VPN API delete proxy route gagal: ' . $res['error']);
+    }
+
+    $stmt = $db->prepare('DELETE FROM vpn_proxy_routes WHERE name = :name');
+    $stmt->execute(['name' => $name]);
+
+    writeVpnAuditLog($db, $actorUserId, 'proxy_route_delete', 'proxy_route', $name, [
+        'name' => $name,
+        'actor_user_id' => $actorUserId,
+    ]);
+
+    echo json_encode([
+        'status' => 'success',
+        'code' => 200,
+        'message' => 'Proxy route berhasil dihapus.',
+    ]);
+}
+
+function handleCheckSubdomain(array $vpnConfig, array $payload): void
+{
+    $subdomain = strtolower(preg_replace('/[^a-z0-9\-]/', '', strtolower(trim((string) ($payload['subdomain'] ?? '')))));
+    if ($subdomain === '') {
+        throw new RuntimeException('subdomain wajib diisi.');
+    }
+
+    $endpoint = rtrim((string) ($vpnConfig['endpoint_proxy_routes'] ?? '/proxy-routes'), '/');
+    $res = vpnApiRequest($vpnConfig, 'GET', $endpoint . '/check-subdomain/' . rawurlencode($subdomain));
+
+    if (!$res['ok']) {
+        throw new RuntimeException('VPN API check subdomain gagal: ' . $res['error']);
+    }
+
+    echo json_encode([
+        'status' => 'success',
+        'code' => 200,
+        'data' => $res['data'],
+    ]);
+}
+
 
 function normalizeVpnName(string $name): string
 {
