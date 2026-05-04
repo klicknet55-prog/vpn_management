@@ -10,6 +10,35 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate deploy secrets
+        shell: bash
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_PATH: ${{ secrets.SERVER_PATH }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          set -euo pipefail
+          missing=()
+
+          for key in SERVER_HOST SERVER_USER SERVER_SSH_KEY SERVER_PORT SERVER_PATH; do
+            if [ -z "${!key:-}" ]; then
+              missing+=("$key")
+            fi
+          done
+
+          if [ "${REPO_PRIVATE}" = "true" ] && [ -z "${GH_PAT:-}" ]; then
+            missing+=("GH_PAT (required for private repository)")
+          fi
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Missing required secrets: ${missing[*]}"
+            exit 1
+          fi
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -17,12 +46,17 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT }}
-          envs: GITHUB_TOKEN,GITHUB_REPOSITORY
           script: |
             set -e
             git config --global --add safe.directory "${{ secrets.SERVER_PATH }}"
             cd "${{ secrets.SERVER_PATH }}"
-            git remote set-url origin "https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git"
+
+            if [ "${{ github.event.repository.private }}" = "true" ]; then
+              git remote set-url origin "https://x-access-token:${{ secrets.GH_PAT }}@github.com/${{ github.repository }}.git"
+            else
+              git remote set-url origin "https://github.com/${{ github.repository }}.git"
+            fi
+
             git fetch origin
             git reset --hard origin/master
             find . -type d -exec chmod 755 {} \;
