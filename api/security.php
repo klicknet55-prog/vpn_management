@@ -16,19 +16,22 @@ function secureSessionStart(): void
     $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
             || (int) ($_SERVER['SERVER_PORT'] ?? 80) === 443;
 
+    // Lax keeps session on top-level return navigation from payment gateways.
+    $sameSite = 'Lax';
+
     session_set_cookie_params([
         'lifetime' => 0,
         'path'     => '/',
         'domain'   => '',
         'secure'   => $isHttps,
         'httponly' => true,
-        'samesite' => 'Strict',
+        'samesite' => $sameSite,
     ]);
 
     ini_set('session.use_strict_mode',   '1');
     ini_set('session.use_only_cookies',  '1');
     ini_set('session.cookie_httponly',   '1');
-    ini_set('session.cookie_samesite',   'Strict');
+    ini_set('session.cookie_samesite',   $sameSite);
 
     session_start();
 }
