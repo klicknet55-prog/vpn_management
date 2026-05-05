@@ -90,23 +90,30 @@ try {
     }
 
     $paymentId = $payment ? (int) $payment['id'] : null;
+    error_log('[webhook] step1: invoice=' . $invoiceNumber . ' payment_id=' . ($paymentId ?? 'NULL') . ' resultCode=' . $resultCode);
 
-    $notifModel->log([
-        'payment_id' => $paymentId,
-        'raw_payload' => $payload,
-        'notification_type' => 'payment',
-        'status_code' => $resultCode,
-        'trx_id' => $reference,
-    ]);
+    try {
+        $notifModel->log([
+            'payment_id' => $paymentId,
+            'raw_payload' => $payload,
+            'notification_type' => 'payment',
+            'status_code' => $resultCode,
+            'trx_id' => $reference,
+        ]);
+    } catch (Throwable $logErr) {
+        error_log('[webhook] notifModel->log FAILED: ' . $logErr->getMessage());
+        // lanjut proses meski log gagal
+    }
 
     if (!$payment) {
-        error_log('payment-webhook info: invoice not found invoice=' . $invoiceNumber . ' amount=' . $amountRaw . ' result=' . $resultCode);
+        error_log('[webhook] invoice not found: ' . $invoiceNumber);
         http_response_code(200);
         echo 'OK (invoice not found, logged)';
         exit;
     }
 
     if ($payment['status'] === 'paid') {
+        error_log('[webhook] already paid: ' . $invoiceNumber);
         http_response_code(200);
         echo 'OK (already paid)';
         exit;
@@ -121,13 +128,22 @@ try {
 
     $paidAt = ($newStatus === 'paid') ? date('Y-m-d H:i:s') : null;
 
-    $paymentModel->updateAfterPayment((int) $payment['id'], [
-        'status' => $newStatus,
-        'transaction_id' => $reference,
-        'session_id' => null,
-        'payment_method' => 'duitku',
-        'paid_at' => $paidAt,
-    ]);
+    error_log('[webhook] step2: updateAfterPayment id=' . $payment['id'] . ' newStatus=' . $newStatus);
+    try {
+        $updated = $paymentModel->updateAfterPayment((int) $payment['id'], [
+            'status'         => $newStatus,
+            'transaction_id' => $reference,
+            'session_id'     => null,
+            'payment_method' => 'duitku',
+            'paid_at'        => $paidAt,
+        ]);
+        error_log('[webhook] updateAfterPayment result=' . ($updated ? 'OK' : 'FALSE'));
+    } catch (Throwable $upErr) {
+        error_log('[webhook] updateAfterPayment EXCEPTION: ' . $upErr->getMessage());
+        http_response_code(200);
+        echo 'OK (db update error logged)';
+        exit;
+    }
 
     if ($invoiceByNumber === null) {
         $invoiceByNumber = $invoiceModel->findByNumber($invoiceNumber);
@@ -144,10 +160,14 @@ try {
     if ($newStatus === 'paid') {
         $subUserId = (int) $payment['user_id'];
         $subPlanId = (int) $payment['plan_id'];
-        error_log('payment-webhook activate: user_id=' . $subUserId . ' plan_id=' . $subPlanId . ' invoice=' . $invoiceNumber);
-        $subService = new SubscriptionService($db);
-        $activated = $subService->activate($subUserId, $subPlanId);
-        error_log('payment-webhook activate result: ' . ($activated ? 'OK' : 'FALSE/plan_not_found') . ' user=' . $subUserId . ' plan=' . $subPlanId);
+        error_log('[webhook] step3: activate user_id=' . $subUserId . ' plan_id=' . $subPlanId);
+        try {
+            $subService = new SubscriptionService($db);
+            $activated = $subService->activate($subUserId, $subPlanId);
+            error_log('[webhook] activate result=' . ($activated ? 'OK' : 'FALSE/plan_not_found') . ' user=' . $subUserId . ' plan=' . $subPlanId);
+        } catch (Throwable $subErr) {
+            error_log('[webhook] activate EXCEPTION: ' . $subErr->getMessage());
+        }
 
         try {
             $userRow = $db->prepare('SELECT email, full_name, phone_number FROM users WHERE id = ? LIMIT 1');
@@ -176,7 +196,7 @@ try {
     http_response_code(200);
     echo 'OK';
 } catch (Throwable $e) {
-    error_log('payment-webhook error: ' . $e->getMessage());
+    error_log('[webhook] FATAL: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
     http_response_code(200);
     echo 'OK (internal error logged)';
 }

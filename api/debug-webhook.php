@@ -11,6 +11,24 @@ if (($_GET['key'] ?? '') !== $secretKey) {
     exit('Forbidden');
 }
 
+// Mode: show PHP error log
+if (isset($_GET['log'])) {
+    header('Content-Type: text/plain; charset=utf-8');
+    $logFile = ini_get('error_log');
+    if ($logFile && file_exists($logFile)) {
+        $lines = file($logFile);
+        $webhookLines = array_filter($lines, fn($l) => str_contains($l, '[webhook]') || str_contains($l, 'payment-webhook'));
+        $last = array_slice(array_values($webhookLines), -50);
+        echo implode('', $last) ?: '(tidak ada baris [webhook] di log)';
+        echo "\n\n-- log file: " . $logFile;
+    } else {
+        $phpLog = ini_get('error_log');
+        echo "error_log path: " . ($phpLog ?: '(tidak dikonfigurasi)') . "\n";
+        echo "Coba cek /var/log/apache2/error.log atau /var/log/nginx/error.log\n";
+    }
+    exit;
+}
+
 require_once __DIR__ . '/db.php';
 
 header('Content-Type: text/html; charset=utf-8');
@@ -70,7 +88,7 @@ function tbl(array $rows): string {
 </head>
 <body>
 <h1 style="color:#c00">⚠ DEBUG PAGE — Hapus setelah selesai!</h1>
-<p>Generated: <?= date('Y-m-d H:i:s') ?></p>
+<p>Generated: <?= date('Y-m-d H:i:s') ?> | <a href="?key=debug1234&log=1" target="_blank">📋 Lihat Error Log (webhook lines)</a></p>
 
 <h2>1. Payment Notifications (10 terbaru)</h2>
 <div class="box"><?= tbl($notifs) ?></div>
