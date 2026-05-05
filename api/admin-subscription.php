@@ -111,13 +111,20 @@ if ($method === 'POST' && $action === 'manual_activate') {
     if ($planId <= 0)       fail('plan_id wajib diisi');
     if ($durationDays <= 0) fail('duration_days harus > 0');
 
-    $service = new SubscriptionService($db);
-    $service->activate($targetUserId, $planId, $durationDays);
+    try {
+        $service = new SubscriptionService($db);
+        $result = $service->activate($targetUserId, $planId, $durationDays);
+        if (!$result) fail('Gagal aktivasi subscription (plan tidak ditemukan)');
+    } catch (Throwable $e) {
+        fail('Gagal aktivasi subscription: ' . $e->getMessage(), 400);
+    }
 
-    writeAdminSubAudit($db, $actorId, $targetUserId, 'admin_manual_activate', [
-        'plan_id'       => $planId,
-        'duration_days' => $durationDays,
-    ]);
+    try {
+        writeAdminSubAudit($db, $actorId, $targetUserId, 'admin_manual_activate', [
+            'plan_id'       => $planId,
+            'duration_days' => $durationDays,
+        ]);
+    } catch (Throwable) { /* ignore audit error */ }
 
     ok(['user_id' => $targetUserId, 'plan_id' => $planId, 'duration_days' => $durationDays]);
 }

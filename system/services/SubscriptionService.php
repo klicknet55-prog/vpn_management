@@ -256,10 +256,16 @@ class SubscriptionService
             }
 
             if (!function_exists('loadVpnApiConfig')) {
+                error_log("[ReactivateVPN] loadVpnApiConfig not available for user {$userId}");
                 return;
             }
 
             $vpnConfig = loadVpnApiConfig($this->db);
+            if (!is_array($vpnConfig) || empty($vpnConfig)) {
+                error_log("[ReactivateVPN] No VPN config for user {$userId}");
+                return;
+            }
+
             // Override timeout untuk reactivate (short, non-blocking)
             $vpnConfig['timeout'] = min(5, (int) ($vpnConfig['timeout'] ?? 5));
 
@@ -270,22 +276,36 @@ class SubscriptionService
             $rows->execute(['uid' => $userId]);
             $vpnUsers = $rows->fetchAll();
 
+            if (empty($vpnUsers)) {
+                error_log("[ReactivateVPN] No suspended VPN users for user {$userId}");
+                return;
+            }
+
             foreach ($vpnUsers as $vpnRow) {
                 $username = (string) $vpnRow['username'];
                 try {
+                    error_log("[ReactivateVPN] Enabling {$username} for user {$userId}");
                     vpnApiRequest($vpnConfig, 'POST',
                         $vpnConfig['endpoint_users'] . '/' . rawurlencode($username) . '/enable');
-                } catch (Throwable) { /* API offline/timeout, tetap update DB */ }
+                } catch (Throwable $e) {
+                    /* API offline/timeout, tetap update DB */
+                    error_log("[ReactivateVPN] API error for {$username}: " . $e->getMessage());
+                }
 
                 try {
                     $this->db->prepare(
                         "UPDATE vpn_users SET vpn_status = 'active', updated_at = NOW()
                          WHERE username = :username"
                     )->execute(['username' => $username]);
-                } catch (Throwable) { /* skip jika DB error */ }
+                    error_log("[ReactivateVPN] DB updated for {$username}");
+                } catch (Throwable $e) {
+                    /* skip jika DB error */
+                    error_log("[ReactivateVPN] DB error for {$username}: " . $e->getMessage());
+                }
             }
-        } catch (Throwable) {
+        } catch (Throwable $e) {
             // VPN tidak dikonfigurasi atau error – skip
+            error_log("[ReactivateVPN] Fatal error for user {$userId}: " . $e->getMessage());
         }
     }
 
@@ -299,15 +319,17 @@ class SubscriptionService
         try {
             // Hanya update database, tidak ada API call ke GoWA
             // GoWA butuh QR scan manual, jadi just set status to pending
-            $this->db->prepare(
+            $stmt = $this->db->prepare(
                 "UPDATE wa_accounts
                  SET status = 'pending', disconnected_at = NULL, updated_at = NOW()
                  WHERE owner_user_id = :uid
                    AND status IN ('disconnected', 'error')"
-            )->execute(['uid' => $userId]);
+            );
+            $result = $stmt->execute(['uid' => $userId]);
+            error_log("[ReactivateWA] Updated for user {$userId}, affected: " . $stmt->rowCount());
         } catch (Throwable $e) {
             // skip jika tabel belum ada atau error lain
-            error_log("WA reactivate error for user {$userId}: " . $e->getMessage());
+            error_log("[ReactivateWA] Error for user {$userId}: " . $e->getMessage());
         }
     }
 
@@ -319,24 +341,30 @@ class SubscriptionService
     private function queueReactivateAsync(int $userId): void
     {
         // Set short max execution time untuk reactivate agar jangan hang
-        $prevTimeout = (int) ini_get('max_execution_time');
-        $prevSocket = ini_get('default_socket_timeout');
+        $prevTimeout = (int) @ini_get('max_execution_time');
+        $prevSocket = @ini_get('default_socket_timeout');
         
         try {
             @set_time_limit(10); // Max 10 second untuk reactivate
             @ini_set('default_socket_timeout', '5'); // 5 second socket timeout
 
+            error_log("[ReactivateAsync] Starting for user {$userId}");
+
             $this->reactivateUserVpn($userId);
             $this->reactivateUserWa($userId);
+
+            error_log("[ReactivateAsync] Completed for user {$userId}");
         } catch (Throwable $e) {
             // Log but don't fail — subscription sudah di-save, reactivate adalah optional
-            @error_log("Subscription reactivate error for user {$userId}: " . $e->getMessage());
+            @error_log("[ReactivateAsync] Error for user {$userId}: " . $e->getMessage());
         } finally {
             // Restore previous settings
             if ($prevTimeout > 0) {
                 @set_time_limit($prevTimeout);
             }
-            @ini_set('default_socket_timeout', $prevSocket);
+            if (!empty($prevSocket)) {
+                @ini_set('default_socket_timeout', $prevSocket);
+            }
         }
     }
 }
