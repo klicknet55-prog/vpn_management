@@ -142,8 +142,12 @@ try {
     }
 
     if ($newStatus === 'paid') {
+        $subUserId = (int) $payment['user_id'];
+        $subPlanId = (int) $payment['plan_id'];
+        error_log('payment-webhook activate: user_id=' . $subUserId . ' plan_id=' . $subPlanId . ' invoice=' . $invoiceNumber);
         $subService = new SubscriptionService($db);
-        $subService->activate((int) $payment['user_id'], (int) $payment['plan_id']);
+        $activated = $subService->activate($subUserId, $subPlanId);
+        error_log('payment-webhook activate result: ' . ($activated ? 'OK' : 'FALSE/plan_not_found') . ' user=' . $subUserId . ' plan=' . $subPlanId);
 
         try {
             $userRow = $db->prepare('SELECT email, full_name, phone_number FROM users WHERE id = ? LIMIT 1');
