@@ -71,14 +71,14 @@ function writeAdminSubAudit(PDO $db, int $actorId, int $targetUserId, string $ac
 if ($method === 'GET' && $action === 'list') {
     $rows = $db->query(
         "SELECT
-            u.id           AS user_id,
+            u.id              AS user_id,
             u.full_name,
             u.email,
-            p.label        AS plan_label,
-            p.name         AS plan_name,
-            us.is_active,
+            p.label           AS plan_label,
+            p.name            AS plan_name,
+            us.is_active      AS subscription_active,
             us.started_at,
-            us.expires_at,
+            us.expires_at     AS subscription_expires_at,
             us.plan_id
          FROM users u
          LEFT JOIN user_subscriptions us ON us.user_id = u.id
