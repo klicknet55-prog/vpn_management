@@ -1354,10 +1354,10 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                         if (!list.length) { wrap.innerHTML = '<p style="color:var(--text-secondary);font-size:0.875rem;">Belum ada subscription.</p>'; return; }
                         var h = '<table class="dash-mini-table"><thead><tr><th>User</th><th>Paket</th><th>Status</th><th>Berlaku s/d</th></tr></thead><tbody>';
                         list.forEach(function (s) {
-                            var isActive = s.subscription_active == 1 && s.subscription_expires_at && new Date(s.subscription_expires_at) > new Date();
+                            var isActive = s.is_active == 1 && s.expires_at && new Date(s.expires_at) > new Date();
                             var dot   = isActive ? 'active' : 'suspended';
-                            var badge = isActive ? 'Aktif' : (s.subscription_expires_at ? 'Expired' : 'Tidak Ada');
-                            var expDate = s.subscription_expires_at ? s.subscription_expires_at.substring(0, 10) : '-';
+                            var badge = isActive ? 'Aktif' : (s.expires_at ? 'Expired' : 'Tidak Ada');
+                            var expDate = s.expires_at ? s.expires_at.substring(0, 10) : '-';
                             h += '<tr>';
                             h += '<td>' + esc(s.full_name || s.email || '-') + '</td>';
                             h += '<td>' + esc(s.plan_label || s.plan_name || '-') + '</td>';
