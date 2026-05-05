@@ -18,57 +18,60 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/../system/middleware/subscription.php';
 
-session_start();
+if (!defined('VPN_CONTROLLER_LIB_MODE')) {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
 
-header('Content-Type: application/json; charset=utf-8');
-setCorsHeaders(false);
+    header('Content-Type: application/json; charset=utf-8');
+    setCorsHeaders(false);
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    exit;
-}
+    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+        exit;
+    }
 
-if (strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['error' => 'Method not allowed', 'code' => 405]);
-    exit;
-}
+    if (strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed', 'code' => 405]);
+        exit;
+    }
 
-if (empty($_SESSION['logged_in']) || empty($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized', 'code' => 401]);
-    exit;
-}
+    if (empty($_SESSION['logged_in']) || empty($_SESSION['user_id'])) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized', 'code' => 401]);
+        exit;
+    }
 
-$roles = $_SESSION['roles'] ?? [];
-$isAllowed = in_array('admin', $roles, true)
-    || in_array('super_admin', $roles, true)
-    || in_array('user', $roles, true);
-if (!$isAllowed) {
-    http_response_code(403);
-    echo json_encode(['error' => 'Forbidden', 'code' => 403]);
-    exit;
-}
+    $roles = $_SESSION['roles'] ?? [];
+    $isAllowed = in_array('admin', $roles, true)
+        || in_array('super_admin', $roles, true)
+        || in_array('user', $roles, true);
+    if (!$isAllowed) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden', 'code' => 403]);
+        exit;
+    }
 
-$payload = json_decode((string) file_get_contents('php://input'), true);
-if (!is_array($payload)) {
-    $payload = [];
-}
+    $payload = json_decode((string) file_get_contents('php://input'), true);
+    if (!is_array($payload)) {
+        $payload = [];
+    }
 
-$action = trim((string) ($payload['action'] ?? ''));
-$currentUserId = (int) ($_SESSION['user_id'] ?? 0);
+    $action = trim((string) ($payload['action'] ?? ''));
+    $currentUserId = (int) ($_SESSION['user_id'] ?? 0);
 
-try {
-    $db = getDB();
-    ensureVpnUsersTable($db);
-    ensureVpnPortForwardingsTable($db);
-    ensureProxyRoutesTable($db);
+    try {
+        $db = getDB();
+        ensureVpnUsersTable($db);
+        ensureVpnPortForwardingsTable($db);
+        ensureProxyRoutesTable($db);
 
-    $vpnConfig = null;
+        $vpnConfig = null;
 
-    switch ($action) {
-        case 'list_users':
-            handleListUsers($db, $currentUserId);
-            break;
+        switch ($action) {
+            case 'list_users':
+                handleListUsers($db, $currentUserId);
+                break;
         case 'list_port_forwardings':
             handleListPortForwardings($db, $currentUserId);
             break;
@@ -138,16 +141,17 @@ try {
         case 'get_user_detail':
             handleGetUserDetail($db, $payload, $currentUserId);
             break;
-        default:
-            http_response_code(400);
-            echo json_encode(['error' => 'Unknown action', 'code' => 400]);
+            default:
+                http_response_code(400);
+                echo json_encode(['error' => 'Unknown action', 'code' => 400]);
+        }
+    } catch (RuntimeException $e) {
+        http_response_code(400);
+        echo json_encode(['error' => $e->getMessage(), 'code' => 400]);
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['error' => $e->getMessage(), 'code' => 500]);
     }
-} catch (RuntimeException $e) {
-    http_response_code(400);
-    echo json_encode(['error' => $e->getMessage(), 'code' => 400]);
-} catch (Throwable $e) {
-    http_response_code(500);
-    echo json_encode(['error' => $e->getMessage(), 'code' => 500]);
 }
 
 function ensureVpnUsersTable(PDO $db): void

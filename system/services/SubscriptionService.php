@@ -252,6 +252,9 @@ class SubscriptionService
         try {
             $controllerPath = dirname(__DIR__, 2) . '/api/vpn-controller.php';
             if (!function_exists('loadVpnApiConfig') && file_exists($controllerPath)) {
+                if (!defined('VPN_CONTROLLER_LIB_MODE')) {
+                    define('VPN_CONTROLLER_LIB_MODE', true);
+                }
                 require_once $controllerPath;
             }
 

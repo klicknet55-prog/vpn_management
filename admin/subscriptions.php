@@ -306,21 +306,33 @@ $cssVer = file_exists(__DIR__ . '/../templatemo-daynight-style.css') ? filemtime
             duration_days: +document.getElementById('activateDays').value,
         };
 
-        const res  = await fetch(API + '?action=manual_activate', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(body),
-        });
-        const data = await res.json();
-        btn.disabled = false; btn.textContent = 'Simpan';
+        try {
+            const res  = await fetch(API + '?action=manual_activate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(body),
+            });
+            const raw = await res.text();
+            let data = null;
+            try {
+                data = JSON.parse(raw);
+            } catch (parseErr) {
+                throw new Error('Response API tidak valid: ' + raw.slice(0, 180));
+            }
 
-        if (data.ok) {
-            closeModal();
-            await loadData();
-        } else {
-            const err = document.getElementById('activateError');
-            err.textContent = data.message || 'Gagal menyimpan.';
-            err.style.display = 'block';
+            if (data.ok) {
+                closeModal();
+                await loadData();
+            } else {
+                throw new Error(data.message || 'Gagal menyimpan.');
+            }
+        } catch (err) {
+            const errBox = document.getElementById('activateError');
+            errBox.textContent = err && err.message ? err.message : 'Terjadi kesalahan saat menyimpan.';
+            errBox.style.display = 'block';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Simpan';
         }
     });
 
@@ -333,14 +345,29 @@ $cssVer = file_exists(__DIR__ . '/../templatemo-daynight-style.css') ? filemtime
 
     document.getElementById('btnDisableConfirm').addEventListener('click', async function() {
         this.disabled = true; this.textContent = 'Memproses...';
-        const res  = await fetch(API + '?action=manual_disable', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({user_id: disableTargetId}),
-        });
-        const data = await res.json();
-        this.disabled = false; this.textContent = 'Ya, Nonaktifkan';
-        if (data.ok) { closeModal(); await loadData(); }
+        try {
+            const res  = await fetch(API + '?action=manual_disable', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: disableTargetId}),
+            });
+            const raw = await res.text();
+            let data = null;
+            try {
+                data = JSON.parse(raw);
+            } catch (parseErr) {
+                throw new Error('Response API tidak valid: ' + raw.slice(0, 180));
+            }
+            if (data.ok) {
+                closeModal();
+                await loadData();
+            }
+        } catch (err) {
+            alert(err && err.message ? err.message : 'Gagal menonaktifkan subscription.');
+        } finally {
+            this.disabled = false;
+            this.textContent = 'Ya, Nonaktifkan';
+        }
     });
 
     function closeModal() {
