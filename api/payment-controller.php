@@ -107,7 +107,8 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
         return;
     }
 
-    $amount = (int) $plan['price_idr'];
+    $amountRaw = $plan['price_idr'] ?? $plan['price'] ?? 0;
+    $amount = (int) $amountRaw;
     if ($amount <= 0) {
         http_response_code(400);
         echo json_encode(['ok' => false, 'error' => 'Paket ini tidak memerlukan pembayaran.']);
@@ -124,6 +125,9 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
         return;
     }
 
+    $planLabel = (string) ($plan['label'] ?? $plan['name'] ?? 'Subscription Plan');
+    $planDuration = (int) ($plan['duration_days'] ?? 30);
+
     // Generate invoice number
     $paymentModel = new Payment($db);
     $invoiceNumber = $paymentModel->generateInvoiceNumber();
@@ -137,7 +141,7 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
         'invoice_number'     => $invoiceNumber,
         'status'             => 'pending',
         'invoice_expired_at' => $expiredAt,
-        'notes'              => "Pembayaran paket {$plan['label']} oleh user_id={$userId}",
+        'notes'              => "Pembayaran paket {$planLabel} oleh user_id={$userId}",
     ]);
 
     // Simpan invoice
@@ -159,19 +163,27 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
     $notifyUrl = APP_URL . '/api/payment-webhook.php';
     $returnUrl = APP_URL . '/user/payment-return.php?invoice=' . urlencode($invoiceNumber) . '&status=success';
 
+    $customerDetail = [
+        'firstName' => $name,
+        'lastName' => '',
+        'email' => $email,
+        'phoneNumber' => $phone,
+    ];
+
     $result = $duitku->createInvoice([
         'merchantOrderId' => $invoiceNumber,
         'paymentAmount'   => $amount,
-        'productDetails'  => $plan['label'] . ' - ' . $plan['duration_days'] . ' hari',
+        'productDetails'  => $planLabel . ' - ' . $planDuration . ' hari',
         'email'           => $email,
         'phoneNumber'     => $phone,
         'customerVaName'  => $name,
         'callbackUrl'     => $notifyUrl,
         'returnUrl'       => $returnUrl,
         'expiryPeriod'    => 1440,
+        'customerDetail'  => $customerDetail,
         'itemDetails'     => [
             [
-                'name'     => $plan['label'] . ' - ' . $plan['duration_days'] . ' hari',
+                'name'     => $planLabel . ' - ' . $planDuration . ' hari',
                 'price'    => $amount,
                 'quantity' => 1,
             ],
@@ -184,8 +196,22 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
            ->execute(['failed', $paymentId]);
         $invoiceModel->updateStatus($invoiceId, 'cancelled');
 
+        $httpStatus = (int) ($result['http_status'] ?? 0);
+        $gatewayMsg = (string) ($result['error'] ?? 'Unknown error');
+
+        // Log aman (tanpa API key/signature) untuk investigasi issue gateway.
+        error_log('[DuitkuCreateInvoiceFail] invoice=' . $invoiceNumber
+            . ' merchant=' . substr($merchantCode, 0, 4) . '***'
+            . ' amount=' . $amount
+            . ' http=' . $httpStatus
+            . ' msg=' . $gatewayMsg);
+
+        if ($httpStatus >= 500 || stripos($gatewayMsg, 'An error has occurred') !== false) {
+            $gatewayMsg = 'Gateway Duitku gagal memproses request (HTTP 500). Cek Merchant Code/API Key sandbox, status akun merchant, dan whitelist/IP di dashboard Duitku.';
+        }
+
         http_response_code(502);
-        echo json_encode(['ok' => false, 'error' => 'Gagal membuat pembayaran: ' . $result['error']]);
+        echo json_encode(['ok' => false, 'error' => 'Gagal membuat pembayaran: ' . $gatewayMsg]);
         return;
     }
 

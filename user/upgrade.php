@@ -348,7 +348,13 @@ require_once __DIR__ . '/../system/seo.php';
                     phone,
                 }),
             });
-            const json = await res.json();
+            const raw = await res.text();
+            let json;
+            try {
+                json = JSON.parse(raw);
+            } catch (_err) {
+                throw new Error('Server mengembalikan respon tidak valid. Cek konfigurasi payment gateway.');
+            }
 
             if (!json.ok) throw new Error(json.error || 'Gagal membuat invoice.');
 
