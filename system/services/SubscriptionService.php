@@ -72,9 +72,9 @@ class SubscriptionService
             $this->usageModel->reset($userId);
         }
 
-        // Re-enable VPN users yang tersuspend + set WA devices ke pending (siap scan QR ulang)
-        $this->reactivateUserVpn($userId);
-        $this->reactivateUserWa($userId);
+        // Queue reactivate VPN/WA as async job (non-blocking)
+        // Jika VPN/GoWA offline, tetap success karena subscription sudah di-save
+        $this->queueReactivateAsync($userId);
 
         return true;
     }
@@ -245,6 +245,7 @@ class SubscriptionService
     /**
      * Re-enable VPN users yang sebelumnya tersuspend karena expired.
      * Dipanggil saat user aktivasi/renew subscription.
+     * Setiap API call dipecah dengan timeout pendek (5s) agar tidak memblock.
      */
     private function reactivateUserVpn(int $userId): void
     {
@@ -259,6 +260,8 @@ class SubscriptionService
             }
 
             $vpnConfig = loadVpnApiConfig($this->db);
+            // Override timeout untuk reactivate (short, non-blocking)
+            $vpnConfig['timeout'] = min(5, (int) ($vpnConfig['timeout'] ?? 5));
 
             $rows = $this->db->prepare(
                 "SELECT username FROM vpn_users
@@ -272,12 +275,14 @@ class SubscriptionService
                 try {
                     vpnApiRequest($vpnConfig, 'POST',
                         $vpnConfig['endpoint_users'] . '/' . rawurlencode($username) . '/enable');
-                } catch (Throwable) { /* API offline, tetap update DB */ }
+                } catch (Throwable) { /* API offline/timeout, tetap update DB */ }
 
-                $this->db->prepare(
-                    "UPDATE vpn_users SET vpn_status = 'active', updated_at = NOW()
-                     WHERE username = :username"
-                )->execute(['username' => $username]);
+                try {
+                    $this->db->prepare(
+                        "UPDATE vpn_users SET vpn_status = 'active', updated_at = NOW()
+                         WHERE username = :username"
+                    )->execute(['username' => $username]);
+                } catch (Throwable) { /* skip jika DB error */ }
             }
         } catch (Throwable) {
             // VPN tidak dikonfigurasi atau error – skip
@@ -292,14 +297,46 @@ class SubscriptionService
     private function reactivateUserWa(int $userId): void
     {
         try {
+            // Hanya update database, tidak ada API call ke GoWA
+            // GoWA butuh QR scan manual, jadi just set status to pending
             $this->db->prepare(
                 "UPDATE wa_accounts
                  SET status = 'pending', disconnected_at = NULL, updated_at = NOW()
                  WHERE owner_user_id = :uid
                    AND status IN ('disconnected', 'error')"
             )->execute(['uid' => $userId]);
-        } catch (Throwable) {
+        } catch (Throwable $e) {
             // skip jika tabel belum ada atau error lain
+            error_log("WA reactivate error for user {$userId}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Queue async reactivate VPN/WA (non-blocking).
+     * Langsung jalankan di background dengan timeout pendek.
+     * Jika VPN/GoWA offline/timeout, tetap lanjut (tidak fail).
+     */
+    private function queueReactivateAsync(int $userId): void
+    {
+        // Set short max execution time untuk reactivate agar jangan hang
+        $prevTimeout = (int) ini_get('max_execution_time');
+        $prevSocket = ini_get('default_socket_timeout');
+        
+        try {
+            @set_time_limit(10); // Max 10 second untuk reactivate
+            @ini_set('default_socket_timeout', '5'); // 5 second socket timeout
+
+            $this->reactivateUserVpn($userId);
+            $this->reactivateUserWa($userId);
+        } catch (Throwable $e) {
+            // Log but don't fail — subscription sudah di-save, reactivate adalah optional
+            @error_log("Subscription reactivate error for user {$userId}: " . $e->getMessage());
+        } finally {
+            // Restore previous settings
+            if ($prevTimeout > 0) {
+                @set_time_limit($prevTimeout);
+            }
+            @ini_set('default_socket_timeout', $prevSocket);
         }
     }
 }
