@@ -126,6 +126,45 @@ if (isset($_GET['simulate'])) {
             $log("subscription NOT FOUND untuk user_id=" . $payment['user_id']);
         }
 
+        // 6. Test updateAfterPayment (dry-run: rollback setelah test)
+        if (isset($_GET['full'])) {
+            $log("--- DRY RUN updateAfterPayment (akan di-rollback) ---");
+            $db->beginTransaction();
+            try {
+                $result = $paymentModel->updateAfterPayment((int)$payment['id'], [
+                    'status'         => 'paid',
+                    'transaction_id' => 'TEST-TXN',
+                    'session_id'     => null,
+                    'payment_method' => 'duitku',
+                    'paid_at'        => date('Y-m-d H:i:s'),
+                ]);
+                $log("updateAfterPayment result=" . ($result ? 'OK' : 'FALSE'));
+                $db->rollBack();
+                $log("(rollback done - DB tidak berubah)");
+            } catch (Throwable $e2) {
+                $db->rollBack();
+                $log("updateAfterPayment EXCEPTION: " . $e2->getMessage());
+            }
+
+            $log("--- DRY RUN activate ---");
+            $db->beginTransaction();
+            try {
+                require_once __DIR__ . '/../system/models/UserSubscription.php';
+                require_once __DIR__ . '/../system/models/UserFeaturesUsage.php';
+                require_once __DIR__ . '/../system/services/SubscriptionService.php';
+                $subSvc = new SubscriptionService($db);
+                $activated = $subSvc->activate((int)$payment['user_id'], (int)$payment['plan_id']);
+                $log("activate result=" . ($activated ? 'OK' : 'FALSE'));
+                $db->rollBack();
+                $log("(rollback done - DB tidak berubah)");
+            } catch (Throwable $e3) {
+                $db->rollBack();
+                $log("activate EXCEPTION: " . $e3->getMessage());
+            }
+        } else {
+            $log("Tambah &full=1 ke URL untuk test updateAfterPayment + activate (dry-run).");
+        }
+
     } catch (Throwable $e) {
         $log("EXCEPTION: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
     }
