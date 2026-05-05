@@ -43,9 +43,27 @@ if (isset($_GET['log'])) {
     exit;
 }
 
-require_once __DIR__ . '/db.php';
+// Mode: fix ENUM status di payments table
+if (isset($_GET['fix_enum'])) {
+    header('Content-Type: text/plain; charset=utf-8');
+    try {
+        $db = getDB();
+        // Cek ENUM saat ini
+        $col = $db->query("SHOW COLUMNS FROM payments LIKE 'status'")->fetch(PDO::FETCH_ASSOC);
+        echo "BEFORE: " . ($col['Type'] ?? 'unknown') . "\n";
 
-// Mode: simulate webhook flow langsung di browser
+        $db->exec("ALTER TABLE payments MODIFY COLUMN status ENUM('pending','paid','success','failed','expired') NOT NULL DEFAULT 'pending'");
+        echo "ALTER TABLE OK\n";
+
+        $col2 = $db->query("SHOW COLUMNS FROM payments LIKE 'status'")->fetch(PDO::FETCH_ASSOC);
+        echo "AFTER: " . ($col2['Type'] ?? 'unknown') . "\n";
+    } catch (Throwable $e) {
+        echo "ERROR: " . $e->getMessage() . "\n";
+    }
+    exit;
+}
+
+
 if (isset($_GET['simulate'])) {
     header('Content-Type: text/plain; charset=utf-8');
 

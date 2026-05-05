@@ -120,7 +120,7 @@ try {
     }
 
     $newStatus = match ($resultCode) {
-        '00' => 'paid',
+        '00' => 'paid',    // ENUM: 'paid' = berhasil dibayar
         '01' => 'pending',
         '02' => 'expired',
         default => 'failed',

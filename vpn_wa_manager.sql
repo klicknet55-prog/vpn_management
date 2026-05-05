@@ -286,7 +286,7 @@ CREATE TABLE IF NOT EXISTS payments (
   gateway_transaction_id   VARCHAR(150)    NULL,
   gateway_session_id       VARCHAR(150)    NULL,
   payment_method           VARCHAR(50)     NULL,
-  status                   ENUM('pending','success','failed','expired') NOT NULL DEFAULT 'pending',
+  status                   ENUM('pending','paid','success','failed','expired') NOT NULL DEFAULT 'pending',
   paid_at                  DATETIME        NULL,
   invoice_expired_at       DATETIME        NULL,
   notes                    TEXT            NULL,
