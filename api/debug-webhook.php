@@ -46,6 +46,7 @@ if (isset($_GET['log'])) {
 // Mode: fix ENUM status di payments table
 if (isset($_GET['fix_enum'])) {
     header('Content-Type: text/plain; charset=utf-8');
+    require_once __DIR__ . '/db.php';
     try {
         $db = getDB();
         // Cek ENUM saat ini
