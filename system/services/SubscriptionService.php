@@ -259,13 +259,11 @@ class SubscriptionService
             }
 
             if (!function_exists('loadVpnApiConfig')) {
-                error_log("[ReactivateVPN] loadVpnApiConfig not available for user {$userId}");
                 return;
             }
 
             $vpnConfig = loadVpnApiConfig($this->db);
             if (!is_array($vpnConfig) || empty($vpnConfig)) {
-                error_log("[ReactivateVPN] No VPN config for user {$userId}");
                 return;
             }
 
@@ -280,19 +278,17 @@ class SubscriptionService
             $vpnUsers = $rows->fetchAll();
 
             if (empty($vpnUsers)) {
-                error_log("[ReactivateVPN] No suspended VPN users for user {$userId}");
                 return;
             }
 
             foreach ($vpnUsers as $vpnRow) {
                 $username = (string) $vpnRow['username'];
                 try {
-                    error_log("[ReactivateVPN] Enabling {$username} for user {$userId}");
                     vpnApiRequest($vpnConfig, 'POST',
                         $vpnConfig['endpoint_users'] . '/' . rawurlencode($username) . '/enable');
                 } catch (Throwable $e) {
                     /* API offline/timeout, tetap update DB */
-                    error_log("[ReactivateVPN] API error for {$username}: " . $e->getMessage());
+                    error_log("Reactivate VPN API error for {$username}: " . $e->getMessage());
                 }
 
                 try {
@@ -300,15 +296,14 @@ class SubscriptionService
                         "UPDATE vpn_users SET vpn_status = 'active', updated_at = NOW()
                          WHERE username = :username"
                     )->execute(['username' => $username]);
-                    error_log("[ReactivateVPN] DB updated for {$username}");
                 } catch (Throwable $e) {
                     /* skip jika DB error */
-                    error_log("[ReactivateVPN] DB error for {$username}: " . $e->getMessage());
+                    error_log("Reactivate VPN DB error for {$username}: " . $e->getMessage());
                 }
             }
         } catch (Throwable $e) {
             // VPN tidak dikonfigurasi atau error – skip
-            error_log("[ReactivateVPN] Fatal error for user {$userId}: " . $e->getMessage());
+            error_log("Reactivate VPN fatal error for user {$userId}: " . $e->getMessage());
         }
     }
 
@@ -328,11 +323,10 @@ class SubscriptionService
                  WHERE owner_user_id = :uid
                    AND status IN ('disconnected', 'error')"
             );
-            $result = $stmt->execute(['uid' => $userId]);
-            error_log("[ReactivateWA] Updated for user {$userId}, affected: " . $stmt->rowCount());
+            $stmt->execute(['uid' => $userId]);
         } catch (Throwable $e) {
             // skip jika tabel belum ada atau error lain
-            error_log("[ReactivateWA] Error for user {$userId}: " . $e->getMessage());
+            error_log("Reactivate WA error for user {$userId}: " . $e->getMessage());
         }
     }
 
@@ -351,15 +345,11 @@ class SubscriptionService
             @set_time_limit(10); // Max 10 second untuk reactivate
             @ini_set('default_socket_timeout', '5'); // 5 second socket timeout
 
-            error_log("[ReactivateAsync] Starting for user {$userId}");
-
             $this->reactivateUserVpn($userId);
             $this->reactivateUserWa($userId);
-
-            error_log("[ReactivateAsync] Completed for user {$userId}");
         } catch (Throwable $e) {
             // Log but don't fail — subscription sudah di-save, reactivate adalah optional
-            @error_log("[ReactivateAsync] Error for user {$userId}: " . $e->getMessage());
+            @error_log("Reactivate async error for user {$userId}: " . $e->getMessage());
         } finally {
             // Restore previous settings
             if ($prevTimeout > 0) {
