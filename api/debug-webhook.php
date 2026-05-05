@@ -14,22 +14,125 @@ if (($_GET['key'] ?? '') !== $secretKey) {
 // Mode: show PHP error log
 if (isset($_GET['log'])) {
     header('Content-Type: text/plain; charset=utf-8');
-    $logFile = ini_get('error_log');
-    if ($logFile && file_exists($logFile)) {
-        $lines = file($logFile);
-        $webhookLines = array_filter($lines, fn($l) => str_contains($l, '[webhook]') || str_contains($l, 'payment-webhook'));
-        $last = array_slice(array_values($webhookLines), -50);
-        echo implode('', $last) ?: '(tidak ada baris [webhook] di log)';
-        echo "\n\n-- log file: " . $logFile;
-    } else {
-        $phpLog = ini_get('error_log');
-        echo "error_log path: " . ($phpLog ?: '(tidak dikonfigurasi)') . "\n";
-        echo "Coba cek /var/log/apache2/error.log atau /var/log/nginx/error.log\n";
+    $candidates = array_filter([
+        ini_get('error_log'),
+        '/var/log/apache2/error.log',
+        '/var/log/apache/error.log',
+        '/var/log/nginx/error.log',
+        '/var/log/php_errors.log',
+        '/tmp/php_errors.log',
+    ]);
+    $found = false;
+    foreach ($candidates as $logFile) {
+        if ($logFile && is_readable($logFile)) {
+            $lines = file($logFile);
+            $webhookLines = array_filter($lines, fn($l) => str_contains($l, '[webhook]') || str_contains($l, 'payment-webhook'));
+            $last = array_slice(array_values($webhookLines), -80);
+            echo "=== Log file: $logFile ===\n\n";
+            echo implode('', $last) ?: '(tidak ada baris [webhook] di log ini)';
+            $found = true;
+            break;
+        }
+    }
+    if (!$found) {
+        echo "Tidak ada log file yang bisa dibaca.\n";
+        echo "error_log setting: " . (ini_get('error_log') ?: '(kosong)') . "\n";
+        echo "Kandidat dicoba:\n" . implode("\n", $candidates) . "\n\n";
+        echo "Gunakan ?simulate=1 untuk test webhook langsung di browser.\n";
     }
     exit;
 }
 
 require_once __DIR__ . '/db.php';
+
+// Mode: simulate webhook flow langsung di browser
+if (isset($_GET['simulate'])) {
+    header('Content-Type: text/plain; charset=utf-8');
+
+    $logs = [];
+    $log = function(string $msg) use (&$logs) {
+        $logs[] = '[' . date('H:i:s') . '] ' . $msg;
+        echo '[' . date('H:i:s') . '] ' . $msg . "\n";
+        flush();
+    };
+
+    $invoiceNumber = $_GET['invoice'] ?? 'INV-20260505-0001';
+    $log("=== SIMULATE WEBHOOK FLOW ===");
+    $log("Invoice: $invoiceNumber");
+
+    try {
+        $db = getDB();
+        $log("DB connected OK");
+
+        // 1. getPaymentGatewayConfig
+        require_once __DIR__ . '/config.php';
+        $pgCfg = getPaymentGatewayConfig($db);
+        $log("merchant_code=" . $pgCfg['merchant_code'] . " api_key=" . substr($pgCfg['api_key'], 0, 6) . "...");
+
+        // 2. Hitung expected signature untuk invoice ini
+        $fakeAmount = '15000';
+        $expectedSig = md5($pgCfg['merchant_code'] . $fakeAmount . $invoiceNumber . $pgCfg['api_key']);
+        $log("expected_sig (amount=15000): $expectedSig");
+
+        // 3. Cari payment
+        require_once __DIR__ . '/../system/models/Payment.php';
+        require_once __DIR__ . '/../system/models/Invoice.php';
+        $paymentModel = new Payment($db);
+        $invoiceModel = new Invoice($db);
+        $payment = $paymentModel->findByInvoiceNumber($invoiceNumber);
+        if ($payment) {
+            $log("payment FOUND: id=" . $payment['id'] . " user_id=" . $payment['user_id'] . " plan_id=" . $payment['plan_id'] . " status=" . $payment['status']);
+        } else {
+            $invoiceRow = $invoiceModel->findByNumber($invoiceNumber);
+            if ($invoiceRow) {
+                $log("invoice found in invoices table: id=" . $invoiceRow['id'] . " payment_id=" . ($invoiceRow['payment_id'] ?? 'NULL'));
+                if (!empty($invoiceRow['payment_id'])) {
+                    $payment = $paymentModel->findById((int)$invoiceRow['payment_id']);
+                    $log($payment ? "payment FOUND via invoice: id=" . $payment['id'] . " status=" . $payment['status'] : "payment NOT FOUND via invoice");
+                }
+            } else {
+                $log("INVOICE NOT FOUND in payments or invoices table! Invoice: $invoiceNumber");
+            }
+        }
+
+        if (!$payment) {
+            $log("STOP: tidak bisa lanjut, payment tidak ditemukan.");
+            exit;
+        }
+
+        if ($payment['status'] === 'paid') {
+            $log("payment sudah PAID — tidak perlu update.");
+        } else {
+            $log("status saat ini: " . $payment['status'] . " → akan di-update ke 'paid'");
+        }
+
+        // 4. Cek plan
+        require_once __DIR__ . '/../system/models/Plan.php';
+        $planModel = new Plan($db);
+        $plan = $planModel->findById((int)$payment['plan_id']);
+        if ($plan) {
+            $log("plan FOUND: id=" . $plan['id'] . " name=" . $plan['name'] . " duration=" . $plan['duration_days'] . " days");
+        } else {
+            $log("PLAN NOT FOUND: plan_id=" . $payment['plan_id'] . " — ini penyebab activate() return false!");
+        }
+
+        // 5. Cek user_subscriptions
+        $subRow = $db->prepare('SELECT * FROM user_subscriptions WHERE user_id = ? LIMIT 1');
+        $subRow->execute([(int)$payment['user_id']]);
+        $sub = $subRow->fetch();
+        if ($sub) {
+            $log("subscription EXISTS: plan_id=" . $sub['plan_id'] . " is_active=" . $sub['is_active'] . " expires_at=" . $sub['expires_at']);
+        } else {
+            $log("subscription NOT FOUND untuk user_id=" . $payment['user_id']);
+        }
+
+    } catch (Throwable $e) {
+        $log("EXCEPTION: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
+    }
+
+    $log("=== DONE ===");
+    exit;
+}
 
 header('Content-Type: text/html; charset=utf-8');
 
@@ -88,7 +191,10 @@ function tbl(array $rows): string {
 </head>
 <body>
 <h1 style="color:#c00">⚠ DEBUG PAGE — Hapus setelah selesai!</h1>
-<p>Generated: <?= date('Y-m-d H:i:s') ?> | <a href="?key=debug1234&log=1" target="_blank">📋 Lihat Error Log (webhook lines)</a></p>
+<p>Generated: <?= date('Y-m-d H:i:s') ?> 
+| <a href="?key=debug1234&log=1" target="_blank">📋 Lihat Error Log</a>
+| <a href="?key=debug1234&simulate=1&invoice=INV-20260505-0001" target="_blank">🔬 Simulate Flow</a>
+</p>
 
 <h2>1. Payment Notifications (10 terbaru)</h2>
 <div class="box"><?= tbl($notifs) ?></div>
