@@ -72,6 +72,10 @@ class SubscriptionService
             $this->usageModel->reset($userId);
         }
 
+        // Re-enable VPN users yang tersuspend + set WA devices ke pending (siap scan QR ulang)
+        $this->reactivateUserVpn($userId);
+        $this->reactivateUserWa($userId);
+
         return true;
     }
 
@@ -235,6 +239,67 @@ class SubscriptionService
             }
         } catch (Throwable) {
             // GoWA tidak dikonfigurasi atau error – skip
+        }
+    }
+
+    /**
+     * Re-enable VPN users yang sebelumnya tersuspend karena expired.
+     * Dipanggil saat user aktivasi/renew subscription.
+     */
+    private function reactivateUserVpn(int $userId): void
+    {
+        try {
+            $controllerPath = dirname(__DIR__, 2) . '/api/vpn-controller.php';
+            if (!function_exists('loadVpnApiConfig') && file_exists($controllerPath)) {
+                require_once $controllerPath;
+            }
+
+            if (!function_exists('loadVpnApiConfig')) {
+                return;
+            }
+
+            $vpnConfig = loadVpnApiConfig($this->db);
+
+            $rows = $this->db->prepare(
+                "SELECT username FROM vpn_users
+                 WHERE owner_user_id = :uid AND vpn_status = 'suspended'"
+            );
+            $rows->execute(['uid' => $userId]);
+            $vpnUsers = $rows->fetchAll();
+
+            foreach ($vpnUsers as $vpnRow) {
+                $username = (string) $vpnRow['username'];
+                try {
+                    vpnApiRequest($vpnConfig, 'POST',
+                        $vpnConfig['endpoint_users'] . '/' . rawurlencode($username) . '/enable');
+                } catch (Throwable) { /* API offline, tetap update DB */ }
+
+                $this->db->prepare(
+                    "UPDATE vpn_users SET vpn_status = 'active', updated_at = NOW()
+                     WHERE username = :username"
+                )->execute(['username' => $username]);
+            }
+        } catch (Throwable) {
+            // VPN tidak dikonfigurasi atau error – skip
+        }
+    }
+
+    /**
+     * Set WA devices yang disconnected/error kembali ke 'pending'
+     * agar user bisa scan QR ulang setelah renew subscription.
+     * (WA tidak bisa auto-reconnect — butuh QR scan manual.)
+     */
+    private function reactivateUserWa(int $userId): void
+    {
+        try {
+            $this->db->prepare(
+                "UPDATE wa_accounts
+                 SET status = 'pending', disconnected_at = NULL, updated_at = NOW()
+                 WHERE owner_user_id = :uid
+                   AND status IN ('disconnected', 'error')"
+            )->execute(['uid' => $userId]);
+        } catch (Throwable) {
+            // skip jika tabel belum ada atau error lain
         }
     }
 }
