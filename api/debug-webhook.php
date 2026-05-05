@@ -67,6 +67,8 @@ if (isset($_GET['fix_enum'])) {
 
 if (isset($_GET['simulate'])) {
     header('Content-Type: text/plain; charset=utf-8');
+    require_once __DIR__ . '/db.php';
+    require_once __DIR__ . '/config.php';
 
     $logs = [];
     $log = function(string $msg) use (&$logs) {
@@ -84,7 +86,6 @@ if (isset($_GET['simulate'])) {
         $log("DB connected OK");
 
         // 1. getPaymentGatewayConfig
-        require_once __DIR__ . '/config.php';
         $pgCfg = getPaymentGatewayConfig($db);
         $log("merchant_code=" . $pgCfg['merchant_code'] . " api_key=" . substr($pgCfg['api_key'], 0, 6) . "...");
 
