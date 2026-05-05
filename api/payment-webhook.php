@@ -50,6 +50,7 @@ $reference      = trim((string) ($payload['reference'] ?? ''));
 $incomingSig    = trim((string) ($payload['signature'] ?? ''));
 
 if ($merchantCode === '' || $invoiceNumber === '' || $incomingSig === '') {
+    error_log('payment-webhook reject: missing fields merchant=' . $merchantCode . ' invoice=' . $invoiceNumber);
     http_response_code(400);
     echo 'Missing required fields';
     exit;
@@ -60,6 +61,7 @@ try {
     $pgCfg = getPaymentGatewayConfig($db);
 
     if ($merchantCode !== (string) ($pgCfg['merchant_code'] ?? '')) {
+        error_log('payment-webhook reject: invalid merchant code incoming=' . $merchantCode);
         http_response_code(403);
         echo 'Invalid merchant code';
         exit;
@@ -67,6 +69,7 @@ try {
 
     $expectedSig = md5($merchantCode . $amountRaw . $invoiceNumber . (string) ($pgCfg['api_key'] ?? ''));
     if (!hash_equals(strtolower($expectedSig), strtolower($incomingSig))) {
+        error_log('payment-webhook reject: invalid signature invoice=' . $invoiceNumber . ' amount=' . $amountRaw);
         http_response_code(403);
         echo 'Invalid signature';
         exit;
@@ -77,6 +80,15 @@ try {
     $notifModel = new PaymentNotification($db);
 
     $payment = $paymentModel->findByInvoiceNumber($invoiceNumber);
+    $invoiceByNumber = null;
+    if (!$payment) {
+        // Fallback: beberapa data lama hanya konsisten di tabel invoices.
+        $invoiceByNumber = $invoiceModel->findByNumber($invoiceNumber);
+        if ($invoiceByNumber && !empty($invoiceByNumber['payment_id'])) {
+            $payment = $paymentModel->findById((int) $invoiceByNumber['payment_id']);
+        }
+    }
+
     $paymentId = $payment ? (int) $payment['id'] : null;
 
     $notifModel->log([
@@ -88,6 +100,7 @@ try {
     ]);
 
     if (!$payment) {
+        error_log('payment-webhook info: invoice not found invoice=' . $invoiceNumber . ' amount=' . $amountRaw . ' result=' . $resultCode);
         http_response_code(200);
         echo 'OK (invoice not found, logged)';
         exit;
@@ -116,7 +129,9 @@ try {
         'paid_at' => $paidAt,
     ]);
 
-    $invoiceByNumber = $invoiceModel->findByNumber($invoiceNumber);
+    if ($invoiceByNumber === null) {
+        $invoiceByNumber = $invoiceModel->findByNumber($invoiceNumber);
+    }
     if ($invoiceByNumber) {
         $invStatus = match ($newStatus) {
             'paid' => 'paid',
