@@ -195,6 +195,9 @@ if (isset($_GET['simulate'])) {
 
 header('Content-Type: text/html; charset=utf-8');
 
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/config.php';
+
 $db = getDB();
 
 // ── 1. Payment Notifications (raw callback log) ──────────────────────────────
