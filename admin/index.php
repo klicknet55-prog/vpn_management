@@ -363,10 +363,16 @@ $subTotal    = 0;
 try {
     $subStmt = $db->query(
         "SELECT
-            SUM(CASE WHEN is_active = 1 AND expires_at > NOW() THEN 1 ELSE 0 END) AS active_count,
-            SUM(CASE WHEN is_active = 0 OR expires_at <= NOW() THEN 1 ELSE 0 END) AS expired_count,
+            SUM(CASE WHEN us.is_active = 1 AND us.expires_at > NOW() THEN 1 ELSE 0 END) AS active_count,
+            SUM(CASE WHEN us.is_active = 0 OR us.expires_at <= NOW() THEN 1 ELSE 0 END) AS expired_count,
             COUNT(*) AS total_count
-         FROM user_subscriptions"
+         FROM user_subscriptions us
+         WHERE us.user_id NOT IN (
+            SELECT DISTINCT ur.user_id 
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE r.name IN ('Admin', 'Super Admin')
+         )"
     );
     $subRow    = $subStmt->fetch();
     $subActive  = (int) ($subRow['active_count']  ?? 0);

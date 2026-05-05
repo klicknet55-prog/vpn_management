@@ -83,6 +83,12 @@ if ($method === 'GET' && $action === 'list') {
          FROM users u
          LEFT JOIN user_subscriptions us ON us.user_id = u.id
          LEFT JOIN plans  p  ON p.id = us.plan_id
+         WHERE u.id NOT IN (
+            SELECT DISTINCT ur.user_id 
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE r.name IN ('Admin', 'Super Admin')
+         )
          ORDER BY u.id ASC"
     )->fetchAll(PDO::FETCH_ASSOC);
     ok($rows);
