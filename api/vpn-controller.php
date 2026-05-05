@@ -16,6 +16,7 @@
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/../system/middleware/subscription.php';
 
 session_start();
 
@@ -84,6 +85,8 @@ try {
             ]);
             break;
         case 'create_user':
+            requireActiveSubscription($currentUserId, $db);
+            requireFeatureLimit($currentUserId, 'vpn', $db);
             $vpnConfig = loadVpnApiConfig($db);
             handleCreateUser($db, $vpnConfig, $payload, $currentUserId);
             break;
@@ -115,6 +118,8 @@ try {
             handleListProxyRoutes($db, $currentUserId);
             break;
         case 'create_proxy_route':
+            requireActiveSubscription($currentUserId, $db);
+            requireFeatureLimit($currentUserId, 'proxy_route', $db);
             $vpnConfig = loadVpnApiConfig($db);
             handleCreateProxyRoute($db, $vpnConfig, $payload, $currentUserId);
             break;
@@ -516,6 +521,10 @@ function handleCreateUser(PDO $db, array $vpnConfig, array $payload, int $actorU
         'owner_user_id' => $actorUserId > 0 ? $actorUserId : null,
     ]);
 
+    if ($actorUserId > 0) {
+        afterFeatureCreated($actorUserId, 'vpn', $db);
+    }
+
     echo json_encode([
         'status' => 'success',
         'message' => $templatePfErrors
@@ -662,6 +671,10 @@ function handleDeleteUser(PDO $db, array $vpnConfig, array $payload, int $actorU
     writeVpnAuditLog($db, $actorUserId, 'vpn_user_delete', 'vpn_user', $username, [
         'username' => $username,
     ]);
+
+    if ($actorUserId > 0) {
+        afterFeatureDeleted($actorUserId, 'vpn', $db);
+    }
 
     echo json_encode([
         'status' => 'success',
@@ -1029,6 +1042,10 @@ function handleCreateProxyRoute(PDO $db, array $vpnConfig, array $payload, int $
         'owner_user_id' => $actorUserId > 0 ? $actorUserId : null,
     ]);
 
+    if ($actorUserId > 0) {
+        afterFeatureCreated($actorUserId, 'proxy_route', $db);
+    }
+
     echo json_encode([
         'status' => 'success',
         'code' => 200,
@@ -1078,6 +1095,10 @@ function handleDeleteProxyRoute(PDO $db, array $vpnConfig, array $payload, int $
         'name' => $name,
         'actor_user_id' => $actorUserId,
     ]);
+
+    if ($actorUserId > 0) {
+        afterFeatureDeleted($actorUserId, 'proxy_route', $db);
+    }
 
     echo json_encode([
         'status' => 'success',

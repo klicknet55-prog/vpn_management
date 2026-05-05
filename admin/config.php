@@ -25,6 +25,17 @@ $waConfigError = '';
 $waConfigSuccess = '';
 $vpnConfigError = '';
 $vpnConfigSuccess = '';
+$planConfigError = '';
+$planConfigSuccess = '';
+$plans = [];
+$pgConfigError = '';
+$pgConfigSuccess = '';
+$pgConfig = [
+    'va'       => IPAYMU_VA,
+    'api_key'  => IPAYMU_API_KEY,
+    'base_url' => IPAYMU_BASE_URL,
+    'sandbox'  => IPAYMU_SANDBOX ? '1' : '0',
+];
 
 $seoConfig = [
     'site_title' => '',
@@ -547,6 +558,83 @@ try {
         $vpnConfigSuccess = 'Konfigurasi VPN API berhasil diperbarui.';
     }
 
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && $postAction === 'save_payment_gateway_config') {
+        $pgVa      = trim((string) ($_POST['ipaymu_va']      ?? ''));
+        $pgApiKey  = trim((string) ($_POST['ipaymu_api_key'] ?? ''));
+        $pgBaseUrl = trim((string) ($_POST['ipaymu_base_url'] ?? 'https://my.ipaymu.com/api/v2'));
+        $pgSandbox = !empty($_POST['ipaymu_sandbox']) ? '1' : '0';
+
+        if ($pgVa === '')      throw new RuntimeException('Virtual Account number wajib diisi.');
+        if ($pgApiKey === '')  throw new RuntimeException('API Key wajib diisi.');
+        if ($pgBaseUrl === '') throw new RuntimeException('Base URL wajib diisi.');
+
+        $updatedBy = (int) ($_SESSION['user_id'] ?? 0) ?: null;
+        saveAppSetting($db, 'ipaymu.va',      $pgVa,      $updatedBy);
+        saveAppSetting($db, 'ipaymu.api_key', $pgApiKey,  $updatedBy);
+        saveAppSetting($db, 'ipaymu.base_url', $pgBaseUrl, $updatedBy);
+        saveAppSetting($db, 'ipaymu.sandbox', $pgSandbox, $updatedBy);
+
+        $pgConfig['va']      = $pgVa;
+        $pgConfig['api_key'] = $pgApiKey;
+        $pgConfig['base_url'] = $pgBaseUrl;
+        $pgConfig['sandbox']  = $pgSandbox;
+
+        $pgConfigSuccess = 'Konfigurasi Payment Gateway berhasil diperbarui.';
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && $postAction === 'save_plan_config') {
+        $planId       = (int) ($_POST['plan_id'] ?? 0);
+        $label        = trim((string) ($_POST['plan_label'] ?? ''));
+        $price        = max(0, (float) str_replace(',', '.', (string) ($_POST['plan_price'] ?? '0')));
+        $durationDays = max(1, (int) ($_POST['plan_duration_days'] ?? 30));
+        $vpnLimit     = max(0, (int) ($_POST['plan_vpn_limit'] ?? 0));
+        $waLimit      = max(0, (int) ($_POST['plan_wa_device_limit'] ?? 0));
+        $proxyLimit   = max(0, (int) ($_POST['plan_proxy_route_limit'] ?? 0));
+        $isActive     = !empty($_POST['plan_is_active']) ? 1 : 0;
+
+        if ($planId <= 0) {
+            throw new RuntimeException('Plan ID tidak valid.');
+        }
+        if ($label === '') {
+            throw new RuntimeException('Label paket wajib diisi.');
+        }
+
+        $db->prepare(
+            'UPDATE plans
+             SET label             = :label,
+                 price             = :price,
+                 duration_days     = :duration_days,
+                 vpn_limit         = :vpn_limit,
+                 wa_device_limit   = :wa_device_limit,
+                 proxy_route_limit = :proxy_route_limit,
+                 is_active         = :is_active,
+                 updated_at        = NOW()
+             WHERE id = :id'
+        )->execute([
+            'label'             => $label,
+            'price'             => $price,
+            'duration_days'     => $durationDays,
+            'vpn_limit'         => $vpnLimit,
+            'wa_device_limit'   => $waLimit,
+            'proxy_route_limit' => $proxyLimit,
+            'is_active'         => $isActive,
+            'id'                => $planId,
+        ]);
+
+        try {
+            $db->prepare(
+                "INSERT INTO audit_logs (actor_user_id, action, target_type, target_id, detail, created_at)
+                 VALUES (:actor, 'plan_update', 'plan', :target_id, :detail, NOW())"
+            )->execute([
+                'actor'     => (int) ($_SESSION['user_id'] ?? 0) ?: null,
+                'target_id' => $planId,
+                'detail'    => json_encode(['label' => $label, 'price' => $price, 'duration_days' => $durationDays], JSON_UNESCAPED_UNICODE),
+            ]);
+        } catch (Throwable) { /* ignore */ }
+
+        $planConfigSuccess = 'Paket \'' . $label . '\' berhasil diperbarui.';
+    }
+
     $settings = loadAppSettings($db, [
         'seo.site_title',
         'seo.meta_description',
@@ -566,6 +654,10 @@ try {
         'vpn.subnet_prefix',
         'vpn.ip_range_start',
         'vpn.ip_range_end',
+        'ipaymu.va',
+        'ipaymu.api_key',
+        'ipaymu.base_url',
+        'ipaymu.sandbox',
     ]);
 
     $seoConfig['site_title'] = (string) ($settings['seo.site_title'] ?? $seoConfig['site_title']);
@@ -658,6 +750,13 @@ try {
          LIMIT 12'
     );
     $waQueueRecent = $queueRecentStmt->fetchAll();
+
+    $plans = $db->query('SELECT * FROM plans ORDER BY price ASC')->fetchAll();
+
+    if (isset($settings['ipaymu.va']))      $pgConfig['va']      = $settings['ipaymu.va'];
+    if (isset($settings['ipaymu.api_key'])) $pgConfig['api_key'] = $settings['ipaymu.api_key'];
+    if (isset($settings['ipaymu.base_url'])) $pgConfig['base_url'] = $settings['ipaymu.base_url'];
+    if (isset($settings['ipaymu.sandbox']))  $pgConfig['sandbox']  = $settings['ipaymu.sandbox'];
 } catch (RuntimeException $e) {
     if ($postAction === 'save_seo_config') {
         $seoConfigError = $e->getMessage();
@@ -665,6 +764,10 @@ try {
         $webConfigError = $e->getMessage();
     } elseif ($postAction === 'save_vpn_config') {
         $vpnConfigError = $e->getMessage();
+    } elseif ($postAction === 'save_plan_config') {
+        $planConfigError = $e->getMessage();
+    } elseif ($postAction === 'save_payment_gateway_config') {
+        $pgConfigError = $e->getMessage();
     } else {
         $waConfigError = $e->getMessage();
     }
@@ -675,6 +778,10 @@ try {
         $webConfigError = 'Gagal menyimpan atau memuat pengaturan Web Page.';
     } elseif ($postAction === 'save_vpn_config') {
         $vpnConfigError = 'Gagal menyimpan atau memuat konfigurasi VPN API.';
+    } elseif ($postAction === 'save_plan_config') {
+        $planConfigError = 'Gagal menyimpan atau memuat paket subscription.';
+    } elseif ($postAction === 'save_payment_gateway_config') {
+        $pgConfigError = 'Gagal menyimpan atau memuat konfigurasi Payment Gateway.';
     } else {
         $waConfigError = 'Gagal menyimpan atau memuat konfigurasi WhatsApp API.';
     }
@@ -939,6 +1046,12 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                 </button>
                 <button type="button" class="config-switch-btn" data-config-mode="vpn" role="tab" aria-selected="false">
                     4. Pengaturan VPN API
+                </button>
+                <button type="button" class="config-switch-btn" data-config-mode="plans" role="tab" aria-selected="false">
+                    5. Paket Subscription
+                </button>
+                <button type="button" class="config-switch-btn" data-config-mode="payment" role="tab" aria-selected="false">
+                    6. Payment Gateway
                 </button>
             </div>
 
@@ -1613,6 +1726,182 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                     </div>
                 </div>
             </section>
+
+            <section id="config-panel-plans" class="config-panel" data-config-panel="plans" role="tabpanel" aria-label="Paket Subscription">
+                <div class="card" style="margin-bottom:1.5rem;">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">Paket Subscription</h3>
+                            <p class="card-subtitle">Kelola harga, durasi, dan batas fitur (VPN, WA Device, Proxy Route) setiap paket.</p>
+                        </div>
+                    </div>
+
+                    <?php if ($planConfigError !== ''): ?>
+                        <div class="admin-alert error"><?php echo htmlspecialchars($planConfigError, ENT_QUOTES, 'UTF-8'); ?></div>
+                    <?php endif; ?>
+                    <?php if ($planConfigSuccess !== ''): ?>
+                        <div class="admin-alert success"><?php echo htmlspecialchars($planConfigSuccess, ENT_QUOTES, 'UTF-8'); ?></div>
+                    <?php endif; ?>
+
+                    <?php if (empty($plans)): ?>
+                        <p style="color:var(--text-secondary);font-size:0.875rem;">Belum ada paket. Jalankan migration SQL untuk seed data awal.</p>
+                    <?php else: ?>
+                    <div style="overflow-x:auto;">
+                        <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
+                            <thead>
+                                <tr style="background:var(--bg-alt,#f8fafc);color:var(--text-secondary);font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;">
+                                    <th style="padding:10px 14px;text-align:left;">Nama</th>
+                                    <th style="padding:10px 14px;text-align:left;">Label</th>
+                                    <th style="padding:10px 14px;text-align:left;">Harga</th>
+                                    <th style="padding:10px 14px;text-align:left;">Durasi</th>
+                                    <th style="padding:10px 14px;text-align:left;">VPN</th>
+                                    <th style="padding:10px 14px;text-align:left;">WA Device</th>
+                                    <th style="padding:10px 14px;text-align:left;">Proxy</th>
+                                    <th style="padding:10px 14px;text-align:left;">Aktif</th>
+                                    <th style="padding:10px 14px;text-align:left;">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($plans as $plan): ?>
+                                <tr style="border-bottom:1px solid var(--border-color,#e5e7eb);" id="plan-row-<?php echo (int) $plan['id']; ?>">
+                                    <td style="padding:10px 14px;font-weight:600;"><?php echo htmlspecialchars((string) $plan['name'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                    <td style="padding:10px 14px;"><?php echo htmlspecialchars((string) $plan['label'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                    <td style="padding:10px 14px;">Rp <?php echo number_format((float) $plan['price'], 0, ',', '.'); ?></td>
+                                    <td style="padding:10px 14px;"><?php echo (int) $plan['duration_days']; ?> hari</td>
+                                    <td style="padding:10px 14px;"><?php echo (int) $plan['vpn_limit']; ?></td>
+                                    <td style="padding:10px 14px;"><?php echo (int) $plan['wa_device_limit']; ?></td>
+                                    <td style="padding:10px 14px;"><?php echo (int) $plan['proxy_route_limit']; ?></td>
+                                    <td style="padding:10px 14px;">
+                                        <?php if ($plan['is_active']): ?>
+                                            <span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:.75rem;font-weight:600;background:#d1fae5;color:#065f46;">Aktif</span>
+                                        <?php else: ?>
+                                            <span style="display:inline-block;padding:2px 10px;border-radius:999px;font-size:.75rem;font-weight:600;background:#fee2e2;color:#991b1b;">Nonaktif</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td style="padding:10px 14px;">
+                                        <button type="button" onclick="togglePlanEdit(<?php echo (int) $plan['id']; ?>)" class="btn btn-secondary" style="padding:4px 12px;font-size:.8rem;">Edit</button>
+                                    </td>
+                                </tr>
+                                <tr id="plan-edit-<?php echo (int) $plan['id']; ?>" style="display:none;background:var(--bg-alt,#f8fafc);">
+                                    <td colspan="9" style="padding:1rem 14px;border-bottom:1px solid var(--border-color,#e5e7eb);">
+                                        <form method="post">
+                                            <input type="hidden" name="action" value="save_plan_config">
+                                            <input type="hidden" name="plan_id" value="<?php echo (int) $plan['id']; ?>">
+                                            <p style="margin:0 0 .75rem 0;font-size:.8125rem;color:var(--text-secondary);">Edit Paket: <strong><?php echo htmlspecialchars((string) $plan['name'], ENT_QUOTES, 'UTF-8'); ?></strong></p>
+                                            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;align-items:end;">
+                                                <div>
+                                                    <label class="form-label">Label Tampilan</label>
+                                                    <input class="form-input" type="text" name="plan_label" required
+                                                        value="<?php echo htmlspecialchars((string) $plan['label'], ENT_QUOTES, 'UTF-8'); ?>">
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">Harga (Rp)</label>
+                                                    <input class="form-input" type="number" name="plan_price" min="0" step="1000"
+                                                        value="<?php echo (int) $plan['price']; ?>">
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">Durasi (hari)</label>
+                                                    <input class="form-input" type="number" name="plan_duration_days" min="1"
+                                                        value="<?php echo (int) $plan['duration_days']; ?>">
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">Maks VPN</label>
+                                                    <input class="form-input" type="number" name="plan_vpn_limit" min="0"
+                                                        value="<?php echo (int) $plan['vpn_limit']; ?>">
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">Maks WA Device</label>
+                                                    <input class="form-input" type="number" name="plan_wa_device_limit" min="0"
+                                                        value="<?php echo (int) $plan['wa_device_limit']; ?>">
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">Maks Proxy Route</label>
+                                                    <input class="form-input" type="number" name="plan_proxy_route_limit" min="0"
+                                                        value="<?php echo (int) $plan['proxy_route_limit']; ?>">
+                                                </div>
+                                                <div>
+                                                    <label class="form-label">Status</label>
+                                                    <label style="display:flex;align-items:center;gap:.4rem;margin-top:.5rem;">
+                                                        <input type="checkbox" name="plan_is_active" value="1" <?php echo $plan['is_active'] ? 'checked' : ''; ?>>
+                                                        <span style="font-size:.875rem;">Aktif</span>
+                                                    </label>
+                                                </div>
+                                                <div style="display:flex;gap:.5rem;align-items:flex-end;">
+                                                    <button type="submit" class="btn btn-primary" style="font-size:.8rem;padding:6px 14px;">Simpan</button>
+                                                    <button type="button" onclick="togglePlanEdit(<?php echo (int) $plan['id']; ?>)" class="btn btn-secondary" style="font-size:.8rem;padding:6px 14px;">Batal</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p style="margin:.75rem 0 0;font-size:.78rem;color:var(--text-secondary);">Nama paket (free/basic/premium) tidak dapat diubah karena digunakan sebagai kunci referensi sistem.</p>
+                    <?php endif; ?>
+                </div>
+            </section>
+
+            <!-- ── 6. Payment Gateway ─────────────────────────────────────── -->
+            <section id="config-panel-payment" class="config-panel" data-config-panel="payment" role="tabpanel" aria-label="Payment Gateway">
+                <div class="config-card">
+                    <h2 class="config-card-title">6. Payment Gateway (iPaymu)</h2>
+                    <p style="margin:0 0 1.2rem;font-size:.875rem;color:var(--text-secondary);">Konfigurasi iPaymu akan disimpan di database dan digunakan oleh sistem pembayaran. Isi VA dan API Key dari dashboard iPaymu Anda.</p>
+
+                    <?php if ($pgConfigError !== ''): ?>
+                        <div class="admin-alert error"><?php echo htmlspecialchars($pgConfigError, ENT_QUOTES, 'UTF-8'); ?></div>
+                    <?php endif; ?>
+                    <?php if ($pgConfigSuccess !== ''): ?>
+                        <div class="admin-alert success"><?php echo htmlspecialchars($pgConfigSuccess, ENT_QUOTES, 'UTF-8'); ?></div>
+                    <?php endif; ?>
+
+                    <form method="POST" action="config.php?mode=payment">
+                        <input type="hidden" name="action" value="save_payment_gateway_config">
+                        <div class="admin-form-grid">
+                            <div class="form-group">
+                                <label for="pg-va">Virtual Account (VA) <span style="color:#f87171">*</span></label>
+                                <input type="text" id="pg-va" name="ipaymu_va"
+                                    value="<?php echo htmlspecialchars($pgConfig['va'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    placeholder="Nomor VA iPaymu Anda"
+                                    autocomplete="off" required>
+                                <small style="color:var(--text-secondary);font-size:.78rem;">Contoh: 0000007289765</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="pg-api-key">API Key <span style="color:#f87171">*</span></label>
+                                <input type="text" id="pg-api-key" name="ipaymu_api_key"
+                                    value="<?php echo htmlspecialchars($pgConfig['api_key'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    placeholder="Secret API Key dari dashboard iPaymu"
+                                    autocomplete="off" required>
+                            </div>
+                            <div class="form-group full">
+                                <label for="pg-base-url">Base URL API</label>
+                                <input type="url" id="pg-base-url" name="ipaymu_base_url"
+                                    value="<?php echo htmlspecialchars($pgConfig['base_url'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    placeholder="https://my.ipaymu.com/api/v2">
+                                <small style="color:var(--text-secondary);font-size:.78rem;">Production: <code>https://my.ipaymu.com/api/v2</code> &nbsp;|&nbsp; Sandbox: <code>https://sandbox.ipaymu.com/api/v2</code></small>
+                            </div>
+                            <div class="form-group full" style="display:flex;align-items:center;gap:.75rem;">
+                                <input type="checkbox" id="pg-sandbox" name="ipaymu_sandbox" value="1"
+                                    <?php echo $pgConfig['sandbox'] === '1' ? 'checked' : ''; ?>>
+                                <label for="pg-sandbox" style="margin:0;cursor:pointer;">Mode Sandbox (aktifkan untuk testing, nonaktifkan di production)</label>
+                            </div>
+                        </div>
+                        <div style="margin-top:1.25rem;display:flex;gap:.75rem;align-items:center;">
+                            <button type="submit" class="btn btn-primary">Simpan Konfigurasi</button>
+                            <a href="https://my.ipaymu.com" target="_blank" rel="noopener noreferrer"
+                                style="font-size:.85rem;color:var(--text-secondary);text-decoration:underline;">Dashboard iPaymu &rarr;</a>
+                        </div>
+                    </form>
+
+                    <div style="margin-top:1.5rem;padding:1rem;background:var(--bg-surface);border:1px dashed var(--border-color);border-radius:var(--radius-md);font-size:.82rem;color:var(--text-secondary);">
+                        <strong style="color:var(--text-primary);">Status saat ini:</strong><br>
+                        VA: <code><?php echo $pgConfig['va'] !== '' ? str_repeat('*', max(0, strlen($pgConfig['va']) - 4)) . substr($pgConfig['va'], -4) : '<em>belum diset</em>'; ?></code> &nbsp;|
+                        API Key: <code><?php echo $pgConfig['api_key'] !== '' ? str_repeat('*', 8) . substr($pgConfig['api_key'], -4) : '<em>belum diset</em>'; ?></code> &nbsp;|
+                        Mode: <strong><?php echo $pgConfig['sandbox'] === '1' ? '<span style="color:#fbbf24">Sandbox</span>' : '<span style="color:#4ade80">Production</span>'; ?></strong>
+                    </div>
+                </div>
+            </section>
         </main>
 
         <footer class="footer">
@@ -1628,16 +1917,20 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                 return;
             }
 
-            const allowedModes = new Set(['seo', 'webpage', 'api', 'vpn']);
+            const allowedModes = new Set(['seo', 'webpage', 'api', 'vpn', 'plans', 'payment']);
             const requestedMode = <?php echo json_encode((string) ($_GET['mode'] ?? '')); ?>;
             const initialMode = <?php echo json_encode(
                 in_array($postAction, ['save_wa_config', 'save_wa_runtime_config'], true)
                     ? 'api'
                     : ($postAction === 'save_vpn_config'
                         ? 'vpn'
+                    : ($postAction === 'save_plan_config'
+                        ? 'plans'
+                    : ($postAction === 'save_payment_gateway_config'
+                        ? 'payment'
                     : ($postAction === 'save_seo_config'
                         ? 'seo'
-                        : 'webpage'))
+                        : 'webpage'))))
             ); ?>;
             const startMode = allowedModes.has(requestedMode) ? requestedMode : initialMode;
 
@@ -1664,6 +1957,13 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
 
             setMode(startMode);
         })();
+    </script>
+    <script>
+    function togglePlanEdit(planId) {
+        const editRow = document.getElementById('plan-edit-' + planId);
+        if (!editRow) return;
+        editRow.style.display = editRow.style.display === 'none' ? 'table-row' : 'none';
+    }
     </script>
     <script src="../templatemo-daynight-script.js?v=<?php echo (int) (file_exists(__DIR__ . '/../templatemo-daynight-script.js') ? filemtime(__DIR__ . '/../templatemo-daynight-script.js') : time()); ?>"></script>
 

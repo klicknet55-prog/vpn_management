@@ -11,6 +11,7 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/gowa.php';
 require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/wa-send-runtime.php';
+require_once __DIR__ . '/../system/middleware/subscription.php';
 
 session_start();
 
@@ -43,6 +44,9 @@ try {
         return;
     }
     if ($method === 'POST' && $action === '') {
+        $db = getDB();
+        requireActiveSubscription($currentUser['id'], $db);
+        requireFeatureLimit($currentUser['id'], 'wa_device', $db);
         handleCreate($currentUser);
         return;
     }
@@ -362,6 +366,8 @@ function handleCreate(array $currentUser): void
         ]
     );
 
+    afterFeatureCreated($currentUser['id'], 'wa_device', $db);
+
     $apiUrl = APP_URL . '/wa-send.php?'
         . 'phone=[number]&message=[text]&secret=' . $secret;
 
@@ -617,6 +623,8 @@ function handleDelete(array $currentUser): void
             'gowa_status' => $gowaRes['status'] ?? null,
         ]
     );
+
+    afterFeatureDeleted($currentUser['id'], 'wa_device', $db);
 
     echo json_encode(['ok' => true, 'gowa_status' => $gowaRes['status']]);
 }

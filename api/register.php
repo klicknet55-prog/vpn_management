@@ -13,6 +13,7 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/gowa.php';
 require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/../system/services/SubscriptionService.php';
 
 setCorsHeaders(false);
 
@@ -270,6 +271,10 @@ function handleVerifyOtp(PDO $db, array $payload): void
 
         $db->prepare('UPDATE users SET is_active = 1, updated_at = NOW() WHERE id = :id')
             ->execute(['id' => $userId]);
+
+        // Assign free plan ke user yang baru aktif
+        $subService = new SubscriptionService($db);
+        $subService->assignFreePlan($userId);
 
         $db->commit();
     } catch (Throwable $e) {

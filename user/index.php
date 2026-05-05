@@ -164,6 +164,7 @@ require_once __DIR__ . '/../system/seo.php';
             <a href="wa-devices.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>WA Devices</a>
             <a href="vpn-users.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>VPN Management</a>
             <a href="proxy-routes.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12h3M19 12h3M12 2v3M12 19v3"/><path d="M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M19.07 4.93l-2.12 2.12M7.05 16.95l-2.12 2.12"/></svg>Proxy Routes</a>
+            <a href="subscription.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>Subscription</a>
         </nav>
         <div class="mobile-menu-footer">
             <a href="../api/logout.php" class="mobile-logout-btn">Logout</a>
@@ -193,6 +194,7 @@ require_once __DIR__ . '/../system/seo.php';
                         <div class="nav-item"><a href="wa-devices.php" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>WA Devices</a></div>
                         <div class="nav-item"><a href="vpn-users.php" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>VPN Management</a></div>
                         <div class="nav-item"><a href="proxy-routes.php" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12h3M19 12h3M12 2v3M12 19v3"/><path d="M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M19.07 4.93l-2.12 2.12M7.05 16.95l-2.12 2.12"/></svg>Proxy Routes</a></div>
+                        <div class="nav-item"><a href="subscription.php" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>Subscription</a></div>
                     </div>
                 </div>
                 <div class="nav-right">
@@ -244,10 +246,20 @@ require_once __DIR__ . '/../system/seo.php';
                     <div class="stat-value">VPN REMOTE</div>
                     <div class="stat-change">Klik untuk lihat akun ↓</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">Session User</div>
-                    <div class="stat-value"><?php echo htmlspecialchars($sessionUserName, ENT_QUOTES, 'UTF-8'); ?></div>
-                    <div class="stat-change positive"><?php echo htmlspecialchars($sessionUserEmail, ENT_QUOTES, 'UTF-8'); ?></div>
+                <div class="stat-card" id="dash-sub-card" style="cursor:pointer;" onclick="location.href='subscription.php'" title="Klik untuk kelola subscription">
+                    <div class="stat-label">SUBSCRIPTION</div>
+                    <div class="stat-value" id="dash-sub-plan" style="font-size:1.1rem;">—</div>
+                    <div class="stat-change" id="dash-sub-days">Memuat...</div>
+                </div>
+            </div>
+
+            <!-- Expired subscription banner -->
+            <div id="dash-expired-banner" hidden style="margin-top:.75rem;margin-bottom:.25rem;">
+                <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:12px;padding:.875rem 1.25rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <span style="font-size:.875rem;color:var(--danger);font-weight:600;">Subscription expired.</span>
+                    <span style="font-size:.8125rem;color:var(--text-secondary);">Fitur tambah VPN, WA device, dan proxy route dinonaktifkan.</span>
+                    <a href="upgrade.php" class="btn btn-primary" style="margin-left:auto;font-size:.8125rem;white-space:nowrap;">Upgrade Sekarang</a>
                 </div>
             </div>
 
@@ -388,6 +400,40 @@ require_once __DIR__ . '/../system/seo.php';
                 })
                 .catch(function () { wrap.innerHTML = '<p style="color:var(--danger);font-size:0.875rem;">Gagal memuat data.</p>'; });
         }
+
+        // ── Subscription widget ───────────────────────────────
+        (function loadSubWidget() {
+            fetch('../api/subscription.php?action=info', { credentials: 'same-origin' })
+                .then(function (r) { return r.json(); })
+                .then(function (res) {
+                    if (!res.ok || !res.data) return;
+                    var d = res.data;
+                    var planEl  = document.getElementById('dash-sub-plan');
+                    var daysEl  = document.getElementById('dash-sub-days');
+                    var card    = document.getElementById('dash-sub-card');
+                    var banner  = document.getElementById('dash-expired-banner');
+
+                    planEl.textContent = d.plan ? (d.plan.label || d.plan.name || 'Free') : 'Free';
+
+                    if (!d.is_active) {
+                        daysEl.textContent = 'Expired – klik untuk upgrade';
+                        daysEl.style.color = 'var(--danger)';
+                        card.style.borderColor = 'var(--danger)';
+                        if (banner) banner.hidden = false;
+                    } else if (d.days_remaining <= 3) {
+                        daysEl.textContent = d.days_remaining + ' hari lagi – segera perpanjang';
+                        daysEl.style.color = 'var(--warning,#f59e0b)';
+                        card.style.borderColor = 'var(--warning,#f59e0b)';
+                    } else {
+                        daysEl.textContent = d.days_remaining + ' hari tersisa';
+                        daysEl.style.color = 'var(--success)';
+                    }
+                })
+                .catch(function () {
+                    var daysEl = document.getElementById('dash-sub-days');
+                    if (daysEl) daysEl.textContent = 'Gagal memuat';
+                });
+        })();
     })();
     </script>
     </div>

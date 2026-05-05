@@ -10,6 +10,15 @@
 require_once __DIR__ . '/env.php';
 loadEnv();
 
+// ── Timezone ──────────────────────────────────────────────────────────────────
+// Fallback ke Asia/Jakarta (WIB) jika php.ini server tidak mengaturnya.
+// Override via .env: APP_TIMEZONE=Asia/Makassar  (WITA) atau Asia/Jayapura (WIT)
+$_appTimezone = env('APP_TIMEZONE', 'Asia/Jakarta');
+if (!@date_default_timezone_set($_appTimezone)) {
+    date_default_timezone_set('Asia/Jakarta');
+}
+unset($_appTimezone);
+
 // ── Database ──────────────────────────────────────────────────────────────────
 define('DB_HOST', env('DB_HOST', 'localhost'));
 define('DB_NAME', env('DB_NAME', 'vpn_wa_manager'));
@@ -27,6 +36,12 @@ define('APP_URL', rtrim(env('APP_URL', 'http://localhost/templatemo'), '/'));
 
 // ── Security ──────────────────────────────────────────────────────────────────
 define('SECRET_BYTES', (int) env('SECRET_BYTES', 16));
+
+// ── iPaymu Payment Gateway ────────────────────────────────────────────────────
+define('IPAYMU_VA',         env('IPAYMU_VA',         ''));        // Virtual Account number
+define('IPAYMU_API_KEY',    env('IPAYMU_API_KEY',     ''));        // Secret API key
+define('IPAYMU_BASE_URL',   env('IPAYMU_BASE_URL',    'https://my.ipaymu.com/api/v2'));
+define('IPAYMU_SANDBOX',    env('IPAYMU_SANDBOX',     '0') === '1'); // set to '1' for sandbox
 
 // ── WA Send Runtime ───────────────────────────────────────────────────────────
 define('WA_SEND_DELAY_MIN_MS', (int) env('WA_SEND_DELAY_MIN_MS', 1000));
