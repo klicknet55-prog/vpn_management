@@ -356,7 +356,27 @@ try {
     $waHealthLabel = 'Error';
 }
 
-// 5. Cron Reconnect Run Indicator (already run vs not yet run)
+// 5. Subscription Summary
+$subActive   = 0;
+$subExpired  = 0;
+$subTotal    = 0;
+try {
+    $subStmt = $db->query(
+        "SELECT
+            SUM(CASE WHEN is_active = 1 AND expires_at > NOW() THEN 1 ELSE 0 END) AS active_count,
+            SUM(CASE WHEN is_active = 0 OR expires_at <= NOW() THEN 1 ELSE 0 END) AS expired_count,
+            COUNT(*) AS total_count
+         FROM user_subscriptions"
+    );
+    $subRow    = $subStmt->fetch();
+    $subActive  = (int) ($subRow['active_count']  ?? 0);
+    $subExpired = (int) ($subRow['expired_count'] ?? 0);
+    $subTotal   = (int) ($subRow['total_count']   ?? 0);
+} catch (Throwable $e) {
+    $subActive = $subExpired = $subTotal = 0;
+}
+
+// 6. Cron Reconnect Run Indicator (already run vs not yet run)
 $cronReconnectHealthPct = 20;
 $cronReconnectHealthLabel = 'Belum dijalankan';
 $cronReconnectLastRunLabel = '-';
@@ -776,7 +796,6 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
             <a href="vpn-users.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>VPN Management</a>
             <a href="proxy-routes.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12h3M19 12h3M12 2v3M12 19v3"/><path d="M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M19.07 4.93l-2.12 2.12M7.05 16.95l-2.12 2.12"/></svg>Proxy Routes</a>
         <a href="config.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Config</a>
-            <a href="subscriptions.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>Subscriptions</a>
             <a href="audit-log.php"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M7 7h10"/><path d="M7 12h10"/><path d="M7 17h6"/></svg>Audit Log</a>
         </nav>
         <div class="mobile-menu-footer">
@@ -822,7 +841,6 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                         <div class="nav-item"><a href="vpn-users.php" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>VPN Management</a></div>
                                             <div class="nav-item"><a href="proxy-routes.php" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12h3M19 12h3M12 2v3M12 19v3"/><path d="M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M19.07 4.93l-2.12 2.12M7.05 16.95l-2.12 2.12"/></svg>Proxy Routes</a></div>
                     <div class="nav-item"><a href="config.php" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Config</a></div>
-                        <div class="nav-item"><a href="subscriptions.php" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>Subscriptions</a></div>
                         <div class="nav-item"><a href="audit-log.php" class="nav-link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/><path d="M7 7h10"/><path d="M7 12h10"/><path d="M7 17h6"/></svg>Audit Log</a></div>
                     </div>
                 </div>
@@ -907,10 +925,10 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                     <div class="stat-value">Ready</div>
                     <div class="stat-change">Klik untuk lihat akun ↓</div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">API Uptime</div>
-                    <div class="stat-value">99.94%</div>
-                    <div class="stat-change positive">Last 30 days</div>
+                <div class="stat-card clickable" id="dash-stat-sub" onclick="dashToggle('sub')" title="Klik untuk lihat daftar subscription">
+                    <div class="stat-label">SUBSCRIPTION</div>
+                    <div class="stat-value"><?php echo $subActive; ?><span style="font-size:.9rem;opacity:.6;">/<?php echo $subTotal; ?></span></div>
+                    <div class="stat-change<?php echo $subExpired > 0 ? ' negative' : ' positive'; ?>"><?php echo $subActive; ?> aktif<?php echo $subExpired > 0 ? ', ' . $subExpired . ' expired' : ''; ?> ↓</div>
                 </div>
             </div>
 
@@ -937,6 +955,22 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                         <button class="btn btn-secondary" style="font-size:0.75rem;padding:0.35rem 0.75rem;" onclick="dashToggle('vpn')">Tutup ×</button>
                     </div>
                     <div id="dash-vpn-body" style="overflow:auto;"><p style="color:var(--text-secondary);font-size:0.875rem;">Memuat data...</p></div>
+                </div>
+            </div>
+
+            <div id="dash-sub-panel" hidden style="margin-bottom:1.5rem;">
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <h3 class="card-title">SUBSCRIPTION USER</h3>
+                            <p class="card-subtitle">Status berlangganan semua user</p>
+                        </div>
+                        <div style="display:flex;gap:.5rem;align-items:center;">
+                            <a href="subscriptions.php" class="btn btn-primary" style="font-size:0.75rem;padding:0.35rem 0.85rem;">Kelola &rarr;</a>
+                            <button class="btn btn-secondary" style="font-size:0.75rem;padding:0.35rem 0.75rem;" onclick="dashToggle('sub')">Tutup ×</button>
+                        </div>
+                    </div>
+                    <div id="dash-sub-body" style="overflow:auto;"><p style="color:var(--text-secondary);font-size:0.875rem;">Memuat data...</p></div>
                 </div>
             </div>
 
@@ -1232,29 +1266,30 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
 
     <script>
         (function () {
-            var _loaded = { wa: false, vpn: false };
+            var _loaded = { wa: false, vpn: false, sub: false };
 
             window.dashToggle = function (panel) {
-                var waPanel = document.getElementById('dash-wa-panel');
+                var waPanel  = document.getElementById('dash-wa-panel');
                 var vpnPanel = document.getElementById('dash-vpn-panel');
-                var waCard = document.getElementById('dash-stat-wa');
-                var vpnCard = document.getElementById('dash-stat-vpn');
-                if (panel === 'wa') {
-                    var opening = waPanel.hidden;
-                    waPanel.hidden = !opening;
-                    vpnPanel.hidden = true;
-                    if (waCard) waCard.classList.toggle('panel-open', opening);
-                    if (vpnCard) vpnCard.classList.remove('panel-open');
-                    if (opening && !_loaded.wa) { _loaded.wa = true; loadWa(); }
-                    if (opening) waPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                } else {
-                    var opening2 = vpnPanel.hidden;
-                    vpnPanel.hidden = !opening2;
-                    waPanel.hidden = true;
-                    if (vpnCard) vpnCard.classList.toggle('panel-open', opening2);
-                    if (waCard) waCard.classList.remove('panel-open');
-                    if (opening2 && !_loaded.vpn) { _loaded.vpn = true; loadVpn(); }
-                    if (opening2) vpnPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                var subPanel = document.getElementById('dash-sub-panel');
+                var waCard   = document.getElementById('dash-stat-wa');
+                var vpnCard  = document.getElementById('dash-stat-vpn');
+                var subCard  = document.getElementById('dash-stat-sub');
+
+                var targetPanel = panel === 'wa' ? waPanel : (panel === 'vpn' ? vpnPanel : subPanel);
+                var targetCard  = panel === 'wa' ? waCard  : (panel === 'vpn' ? vpnCard  : subCard);
+                var opening = targetPanel.hidden;
+
+                [waPanel, vpnPanel, subPanel].forEach(function (p) { if (p) p.hidden = true; });
+                [waCard, vpnCard, subCard].forEach(function (c) { if (c) c.classList.remove('panel-open'); });
+
+                if (opening) {
+                    targetPanel.hidden = false;
+                    if (targetCard) targetCard.classList.add('panel-open');
+                    if (panel === 'wa'  && !_loaded.wa)  { _loaded.wa  = true; loadWa();  }
+                    if (panel === 'vpn' && !_loaded.vpn) { _loaded.vpn = true; loadVpn(); }
+                    if (panel === 'sub' && !_loaded.sub) { _loaded.sub = true; loadSub(); }
+                    targetPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             };
 
@@ -1303,6 +1338,32 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                             h += '<tr><td>' + esc(u.username || '-') + '</td>';
                             h += '<td><span class="dash-status-dot ' + dot + '"></span>' + esc(u.vpn_status || '-') + '</td>';
                             h += '<td>' + esc(u.owner_name || u.owner_email || '-') + '</td></tr>';
+                        });
+                        h += '</tbody></table>';
+                        wrap.innerHTML = h;
+                    })
+                    .catch(function () { wrap.innerHTML = '<p style="color:var(--danger);font-size:0.875rem;">Gagal memuat data.</p>'; });
+            }
+
+            function loadSub() {
+                var wrap = document.getElementById('dash-sub-body');
+                fetch('../api/admin-subscription.php?action=list', { credentials: 'same-origin' })
+                    .then(function (r) { return r.json(); })
+                    .then(function (res) {
+                        var list = res.data || [];
+                        if (!list.length) { wrap.innerHTML = '<p style="color:var(--text-secondary);font-size:0.875rem;">Belum ada subscription.</p>'; return; }
+                        var h = '<table class="dash-mini-table"><thead><tr><th>User</th><th>Paket</th><th>Status</th><th>Berlaku s/d</th></tr></thead><tbody>';
+                        list.forEach(function (s) {
+                            var isActive = s.subscription_active == 1 && s.subscription_expires_at && new Date(s.subscription_expires_at) > new Date();
+                            var dot   = isActive ? 'active' : 'suspended';
+                            var badge = isActive ? 'Aktif' : (s.subscription_expires_at ? 'Expired' : 'Tidak Ada');
+                            var expDate = s.subscription_expires_at ? s.subscription_expires_at.substring(0, 10) : '-';
+                            h += '<tr>';
+                            h += '<td>' + esc(s.full_name || s.email || '-') + '</td>';
+                            h += '<td>' + esc(s.plan_label || s.plan_name || '-') + '</td>';
+                            h += '<td><span class="dash-status-dot ' + dot + '"></span>' + badge + '</td>';
+                            h += '<td>' + esc(expDate) + '</td>';
+                            h += '</tr>';
                         });
                         h += '</tbody></table>';
                         wrap.innerHTML = h;
