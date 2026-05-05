@@ -67,18 +67,18 @@ class Payment
     {
         $stmt = $this->db->prepare(
             'UPDATE payments
-             SET status                  = ?,
-                 ipaymu_transaction_id   = ?,
-                 ipaymu_session_id       = ?,
-                 payment_method          = ?,
-                 paid_at                 = ?,
-                 updated_at              = CURRENT_TIMESTAMP
+             SET status                     = ?,
+                 gateway_transaction_id     = ?,
+                 gateway_session_id         = ?,
+                 payment_method             = ?,
+                 paid_at                    = ?,
+                 updated_at                 = CURRENT_TIMESTAMP
              WHERE id = ?'
         );
         return $stmt->execute([
             $data['status'],
-            $data['transaction_id']        ?? $data['ipaymu_transaction_id'] ?? null,
-            $data['session_id']            ?? $data['ipaymu_session_id'] ?? null,
+            $data['transaction_id']           ?? $data['gateway_transaction_id'] ?? null,
+            $data['session_id']               ?? $data['gateway_session_id'] ?? null,
             $data['payment_method']        ?? null,
             $data['paid_at']               ?? null,
             $id,

@@ -179,11 +179,9 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
     ]);
 
     if (!$result['ok']) {
-        // Tandai payment sebagai failed
-        $paymentModel->updateAfterPayment($paymentId, [
-            'status'  => 'failed',
-            'paid_at' => null,
-        ]);
+        // Tandai payment sebagai failed (simple update, tanpa kolom gateway)
+        $db->prepare('UPDATE payments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+           ->execute(['failed', $paymentId]);
         $invoiceModel->updateStatus($invoiceId, 'cancelled');
 
         http_response_code(502);

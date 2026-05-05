@@ -228,6 +228,8 @@ require_once __DIR__ . '/../system/seo.php';
                     <button id="pay-btn" class="btn btn-primary" style="width:100%;margin-top:1rem;font-size:.9375rem;padding:.75rem;" onclick="submitOrder()">
                         Bayar Sekarang
                     </button>
+
+                    <div id="pay-error" hidden style="margin-top:.75rem;padding:.65rem 1rem;border-radius:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);color:#ef4444;font-size:.8125rem;"></div>
                 </div>
 
             </div>
@@ -319,15 +321,16 @@ require_once __DIR__ . '/../system/seo.php';
 
     async function submitOrder() {
         hideAlert();
+        hidePayError();
         if (!selectedPlan) { showAlert('Pilih paket terlebih dahulu.'); return; }
 
         const name  = document.getElementById('inp-name').value.trim();
         const email = document.getElementById('inp-email').value.trim();
         const phone = document.getElementById('inp-phone').value.trim();
 
-        if (!name)  { showAlert('Nama lengkap wajib diisi.'); return; }
-        if (!email) { showAlert('Email wajib diisi.'); return; }
-        if (!phone) { showAlert('No. HP wajib diisi.'); return; }
+        if (!name)  { showPayError('Nama lengkap wajib diisi.'); return; }
+        if (!email) { showPayError('Email wajib diisi.'); return; }
+        if (!phone) { showPayError('No. HP wajib diisi.'); return; }
 
         const btn = document.getElementById('pay-btn');
         btn.disabled = true;
@@ -358,10 +361,21 @@ require_once __DIR__ . '/../system/seo.php';
                 btn.textContent = 'Bayar Sekarang';
             }
         } catch (e) {
-            showAlert(e.message);
+            showPayError(e.message);
             btn.disabled = false;
             btn.textContent = 'Bayar Sekarang';
         }
+    }
+
+    function showPayError(msg) {
+        const el = document.getElementById('pay-error');
+        el.textContent = msg;
+        el.hidden = false;
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    function hidePayError() {
+        const el = document.getElementById('pay-error');
+        if (el) el.hidden = true;
     }
 
     loadPlans();

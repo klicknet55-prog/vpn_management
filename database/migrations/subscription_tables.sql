@@ -69,8 +69,8 @@ CREATE TABLE IF NOT EXISTS payments (
   plan_id                  INT UNSIGNED NOT NULL,
   amount                   DECIMAL(12,2) NOT NULL,
   invoice_number           VARCHAR(100) NOT NULL UNIQUE,       -- INV-20260505-0001
-  ipaymu_transaction_id    VARCHAR(150) NULL,
-  ipaymu_session_id        VARCHAR(150) NULL,
+  gateway_transaction_id   VARCHAR(150) NULL,
+  gateway_session_id       VARCHAR(150) NULL,
   payment_method           VARCHAR(50) NULL,                   -- 'va','qris','cc'
   status                   ENUM('pending','success','failed','expired') NOT NULL DEFAULT 'pending',
   paid_at                  DATETIME NULL,
