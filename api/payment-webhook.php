@@ -1,157 +1,135 @@
 <?php
 /**
- * iPaymu Payment Webhook Handler
+ * Duitku Payment Webhook Handler
  *
- * iPaymu mengirim POST ke URL ini setelah transaksi selesai/gagal.
+ * Duitku mengirim callback POST ke endpoint ini.
  * Endpoint: POST /api/payment-webhook.php
  *
- * Payload yang dikirim iPaymu (form-encoded atau JSON):
- *   trx_id          — ID transaksi iPaymu
- *   status          — berisi status_code: 1=success, 2=pending, 3=failed, 4=expired
- *   reference_id    — referenceId yang kita kirim (invoice_number kita)
- *   session_id      — session ID iPaymu
- *   amount          — jumlah terbayar
- *   payment_method
- *   payment_channel
+ * Field penting callback:
+ * - merchantCode
+ * - amount
+ * - merchantOrderId (invoice number kita)
+ * - resultCode (00=success, 01=pending, 02=failed/expired)
+ * - reference
+ * - signature
  */
 
-// Tidak butuh output HTML, ini pure API endpoint
 header('Content-Type: text/plain; charset=utf-8');
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/env.php';
 require_once __DIR__ . '/../system/models/Payment.php';
 require_once __DIR__ . '/../system/models/Invoice.php';
 require_once __DIR__ . '/../system/models/PaymentNotification.php';
 require_once __DIR__ . '/../system/services/SubscriptionService.php';
 require_once __DIR__ . '/../system/services/NotificationService.php';
 
-// Hanya izinkan POST
 if (strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
     http_response_code(405);
     echo 'Method Not Allowed';
     exit;
 }
 
-// ── Baca payload ──────────────────────────────────────────────────────────────
 $rawBody = file_get_contents('php://input');
-
-// iPaymu bisa kirim form-encoded ATAU JSON
-$payload = [];
-parse_str($rawBody, $payload);
+$payload = $_POST;
 if (empty($payload)) {
-    $payload = json_decode($rawBody, true) ?? [];
-}
-if (empty($payload)) {
-    $payload = $_POST;
-}
-
-// ── Verifikasi signature iPaymu ───────────────────────────────────────────────
-// iPaymu menandatangani webhook dengan header Signature yang sama seperti request:
-// SHA256( "POST" + ":" + VA + ":" + SHA256(body) + ":" + API_KEY )
-$_pgCfg = getPaymentGatewayConfig(getDB());
-$va     = $_pgCfg['va'];
-$apiKey = $_pgCfg['api_key'];
-unset($_pgCfg);
-
-if ($va && $apiKey) {
-    $incomingSig = $_SERVER['HTTP_SIGNATURE'] ?? $_SERVER['HTTP_X_SIGNATURE'] ?? '';
-    if ($incomingSig !== '') {
-        $expectedSig = hash('sha256', 'post:' . $va . ':' . hash('sha256', $rawBody) . ':' . $apiKey);
-        if (!hash_equals($expectedSig, strtolower($incomingSig))) {
-            http_response_code(403);
-            echo 'Invalid signature';
-            exit;
-        }
+    $decoded = json_decode((string) $rawBody, true);
+    if (is_array($decoded)) {
+        $payload = $decoded;
+    } else {
+        parse_str((string) $rawBody, $payload);
     }
 }
 
-// ── Ambil field kunci ─────────────────────────────────────────────────────────
-$trxId         = trim((string) ($payload['trx_id']         ?? $payload['transaction_id'] ?? ''));
-$statusCode    = (int) ($payload['status']         ?? $payload['status_code'] ?? 0);
-$referenceId   = trim((string) ($payload['reference_id']   ?? $payload['referenceId']   ?? ''));
-$sessionId     = trim((string) ($payload['session_id']     ?? ''));
-$amountPaid    = (int) ($payload['amount'] ?? 0);
-$paymentMethod = trim((string) ($payload['payment_method']  ?? ''));
+$merchantCode   = trim((string) ($payload['merchantCode'] ?? ''));
+$amountRaw      = trim((string) ($payload['amount'] ?? '0'));
+$amountPaid     = (int) round((float) $amountRaw);
+$invoiceNumber  = trim((string) ($payload['merchantOrderId'] ?? ''));
+$resultCode     = trim((string) ($payload['resultCode'] ?? ''));
+$reference      = trim((string) ($payload['reference'] ?? ''));
+$incomingSig    = trim((string) ($payload['signature'] ?? ''));
 
-if (!$trxId || !$referenceId) {
+if ($merchantCode === '' || $invoiceNumber === '' || $incomingSig === '') {
     http_response_code(400);
-    echo 'Missing trx_id or reference_id';
+    echo 'Missing required fields';
     exit;
 }
 
 try {
-    $db            = getDB();
-    $paymentModel  = new Payment($db);
-    $invoiceModel  = new Invoice($db);
-    $notifModel    = new PaymentNotification($db);
+    $db = getDB();
+    $pgCfg = getPaymentGatewayConfig($db);
 
-    // Cari payment berdasarkan invoice_number (reference_id)
-    $payment = $paymentModel->findByInvoiceNumber($referenceId);
+    if ($merchantCode !== (string) ($pgCfg['merchant_code'] ?? '')) {
+        http_response_code(403);
+        echo 'Invalid merchant code';
+        exit;
+    }
+
+    $expectedSig = md5($merchantCode . $amountRaw . $invoiceNumber . (string) ($pgCfg['api_key'] ?? ''));
+    if (!hash_equals(strtolower($expectedSig), strtolower($incomingSig))) {
+        http_response_code(403);
+        echo 'Invalid signature';
+        exit;
+    }
+
+    $paymentModel = new Payment($db);
+    $invoiceModel = new Invoice($db);
+    $notifModel = new PaymentNotification($db);
+
+    $payment = $paymentModel->findByInvoiceNumber($invoiceNumber);
     $paymentId = $payment ? (int) $payment['id'] : null;
 
-    // Log notifikasi mentah untuk audit
     $notifModel->log([
-        'payment_id'        => $paymentId,
-        'raw_payload'       => $payload,
+        'payment_id' => $paymentId,
+        'raw_payload' => $payload,
         'notification_type' => 'payment',
-        'status_code'       => $statusCode,
-        'trx_id'            => $trxId,
+        'status_code' => $resultCode,
+        'trx_id' => $reference,
     ]);
 
     if (!$payment) {
-        // Invoice tidak ditemukan, tapi kita sudah log. Kembalikan 200 agar iPaymu tidak retry.
         http_response_code(200);
         echo 'OK (invoice not found, logged)';
         exit;
     }
 
-    // Jangan proses ulang yang sudah berhasil
     if ($payment['status'] === 'paid') {
         http_response_code(200);
         echo 'OK (already paid)';
         exit;
     }
 
-    // ── Mapping status iPaymu ─────────────────────────────────────────────────
-    // 1 = berhasil, 2 = pending, 3 = gagal, 4 = expired
-    $newStatus = match ($statusCode) {
-        1       => 'paid',
-        2       => 'pending',
-        3       => 'failed',
-        4       => 'expired',
+    $newStatus = match ($resultCode) {
+        '00' => 'paid',
+        '01' => 'pending',
+        '02' => 'expired',
         default => 'failed',
     };
 
     $paidAt = ($newStatus === 'paid') ? date('Y-m-d H:i:s') : null;
 
-    // Update tabel payments
     $paymentModel->updateAfterPayment((int) $payment['id'], [
-        'status'                  => $newStatus,
-        'ipaymu_transaction_id'   => $trxId,
-        'ipaymu_session_id'       => $sessionId,
-        'payment_method'          => $paymentMethod,
-        'paid_at'                 => $paidAt,
+        'status' => $newStatus,
+        'transaction_id' => $reference,
+        'session_id' => null,
+        'payment_method' => 'duitku',
+        'paid_at' => $paidAt,
     ]);
 
-    // Update invoice
-    $invoiceByNumber = $invoiceModel->findByNumber($referenceId);
+    $invoiceByNumber = $invoiceModel->findByNumber($invoiceNumber);
     if ($invoiceByNumber) {
         $invStatus = match ($newStatus) {
-            'paid'    => 'paid',
+            'paid' => 'paid',
             'failed', 'expired' => 'cancelled',
-            default   => 'sent',
+            default => 'sent',
         };
         $invoiceModel->updateStatus((int) $invoiceByNumber['id'], $invStatus);
     }
 
-    // Jika sukses bayar → aktifkan subscription + kirim email konfirmasi
     if ($newStatus === 'paid') {
         $subService = new SubscriptionService($db);
         $subService->activate((int) $payment['user_id'], (int) $payment['plan_id']);
 
-        // Kirim email + WA konfirmasi ke user
         try {
             $userRow = $db->prepare('SELECT email, full_name, phone_number FROM users WHERE id = ? LIMIT 1');
             $userRow->execute([(int) $payment['user_id']]);
@@ -159,10 +137,10 @@ try {
             if ($user) {
                 $notif = new NotificationService();
                 $paymentData = [
-                    'invoice_number' => $referenceId,
-                    'plan_label'     => $payment['plan_label'] ?? '',
-                    'amount'         => $payment['amount'],
-                    'paid_at'        => $paidAt,
+                    'invoice_number' => $invoiceNumber,
+                    'plan_label' => $payment['plan_label'] ?? '',
+                    'amount' => $payment['amount'],
+                    'paid_at' => $paidAt,
                 ];
                 if (!empty($user['email'])) {
                     $notif->sendPaymentSuccess($user['email'], $user['full_name'] ?? 'User', $paymentData);
@@ -171,14 +149,14 @@ try {
                     $notif->sendWaPaymentSuccess($user['phone_number'], $user['full_name'] ?? 'User', $paymentData);
                 }
             }
-        } catch (Throwable) { /* notifikasi gagal tidak gagalkan webhook */ }
+        } catch (Throwable) {
+            // notifikasi gagal tidak menggagalkan webhook
+        }
     }
 
     http_response_code(200);
     echo 'OK';
-
 } catch (Throwable $e) {
-    // Log error tapi tetap return 200 agar iPaymu tidak retry terus
     error_log('payment-webhook error: ' . $e->getMessage());
     http_response_code(200);
     echo 'OK (internal error logged)';

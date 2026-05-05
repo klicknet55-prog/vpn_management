@@ -62,7 +62,7 @@ class Payment
         return $stmt->fetchAll();
     }
 
-    /** Update status dan data iPaymu setelah callback webhook */
+    /** Update status dan data gateway setelah callback webhook */
     public function updateAfterPayment(int $id, array $data): bool
     {
         $stmt = $this->db->prepare(
@@ -70,15 +70,15 @@ class Payment
              SET status                  = ?,
                  ipaymu_transaction_id   = ?,
                  ipaymu_session_id       = ?,
-                 payment_method         = ?,
-                 paid_at                = ?,
-                 updated_at             = CURRENT_TIMESTAMP
+                 payment_method          = ?,
+                 paid_at                 = ?,
+                 updated_at              = CURRENT_TIMESTAMP
              WHERE id = ?'
         );
         return $stmt->execute([
             $data['status'],
-            $data['ipaymu_transaction_id'] ?? null,
-            $data['ipaymu_session_id']     ?? null,
+            $data['transaction_id']        ?? $data['ipaymu_transaction_id'] ?? null,
+            $data['session_id']            ?? $data['ipaymu_session_id'] ?? null,
             $data['payment_method']        ?? null,
             $data['paid_at']               ?? null,
             $id,

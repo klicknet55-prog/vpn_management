@@ -31,10 +31,10 @@ $plans = [];
 $pgConfigError = '';
 $pgConfigSuccess = '';
 $pgConfig = [
-    'va'       => IPAYMU_VA,
-    'api_key'  => IPAYMU_API_KEY,
-    'base_url' => IPAYMU_BASE_URL,
-    'sandbox'  => IPAYMU_SANDBOX ? '1' : '0',
+    'merchant_code' => DUITKU_MERCHANT_CODE,
+    'api_key'       => DUITKU_API_KEY,
+    'base_url'      => DUITKU_BASE_URL,
+    'sandbox'       => DUITKU_SANDBOX ? '1' : '0',
 ];
 
 $seoConfig = [
@@ -559,25 +559,25 @@ try {
     }
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && $postAction === 'save_payment_gateway_config') {
-        $pgVa      = trim((string) ($_POST['ipaymu_va']      ?? ''));
-        $pgApiKey  = trim((string) ($_POST['ipaymu_api_key'] ?? ''));
-        $pgBaseUrl = trim((string) ($_POST['ipaymu_base_url'] ?? 'https://my.ipaymu.com/api/v2'));
-        $pgSandbox = !empty($_POST['ipaymu_sandbox']) ? '1' : '0';
+        $pgMerchantCode = trim((string) ($_POST['duitku_merchant_code'] ?? ''));
+        $pgApiKey = trim((string) ($_POST['duitku_api_key'] ?? ''));
+        $pgBaseUrl = trim((string) ($_POST['duitku_base_url'] ?? 'https://sandbox.duitku.com/webapi/api/merchant'));
+        $pgSandbox = !empty($_POST['duitku_sandbox']) ? '1' : '0';
 
-        if ($pgVa === '')      throw new RuntimeException('Virtual Account number wajib diisi.');
-        if ($pgApiKey === '')  throw new RuntimeException('API Key wajib diisi.');
+        if ($pgMerchantCode === '') throw new RuntimeException('Merchant Code wajib diisi.');
+        if ($pgApiKey === '') throw new RuntimeException('API Key wajib diisi.');
         if ($pgBaseUrl === '') throw new RuntimeException('Base URL wajib diisi.');
 
         $updatedBy = (int) ($_SESSION['user_id'] ?? 0) ?: null;
-        saveAppSetting($db, 'ipaymu.va',      $pgVa,      $updatedBy);
-        saveAppSetting($db, 'ipaymu.api_key', $pgApiKey,  $updatedBy);
-        saveAppSetting($db, 'ipaymu.base_url', $pgBaseUrl, $updatedBy);
-        saveAppSetting($db, 'ipaymu.sandbox', $pgSandbox, $updatedBy);
+        saveAppSetting($db, 'duitku.merchant_code', $pgMerchantCode, $updatedBy);
+        saveAppSetting($db, 'duitku.api_key', $pgApiKey, $updatedBy);
+        saveAppSetting($db, 'duitku.base_url', $pgBaseUrl, $updatedBy);
+        saveAppSetting($db, 'duitku.sandbox', $pgSandbox, $updatedBy);
 
-        $pgConfig['va']      = $pgVa;
+        $pgConfig['merchant_code'] = $pgMerchantCode;
         $pgConfig['api_key'] = $pgApiKey;
         $pgConfig['base_url'] = $pgBaseUrl;
-        $pgConfig['sandbox']  = $pgSandbox;
+        $pgConfig['sandbox'] = $pgSandbox;
 
         $pgConfigSuccess = 'Konfigurasi Payment Gateway berhasil diperbarui.';
     }
@@ -654,10 +654,10 @@ try {
         'vpn.subnet_prefix',
         'vpn.ip_range_start',
         'vpn.ip_range_end',
-        'ipaymu.va',
-        'ipaymu.api_key',
-        'ipaymu.base_url',
-        'ipaymu.sandbox',
+        'duitku.merchant_code',
+        'duitku.api_key',
+        'duitku.base_url',
+        'duitku.sandbox',
     ]);
 
     $seoConfig['site_title'] = (string) ($settings['seo.site_title'] ?? $seoConfig['site_title']);
@@ -753,10 +753,10 @@ try {
 
     $plans = $db->query('SELECT * FROM plans ORDER BY price ASC')->fetchAll();
 
-    if (isset($settings['ipaymu.va']))      $pgConfig['va']      = $settings['ipaymu.va'];
-    if (isset($settings['ipaymu.api_key'])) $pgConfig['api_key'] = $settings['ipaymu.api_key'];
-    if (isset($settings['ipaymu.base_url'])) $pgConfig['base_url'] = $settings['ipaymu.base_url'];
-    if (isset($settings['ipaymu.sandbox']))  $pgConfig['sandbox']  = $settings['ipaymu.sandbox'];
+    if (isset($settings['duitku.merchant_code'])) $pgConfig['merchant_code'] = $settings['duitku.merchant_code'];
+    if (isset($settings['duitku.api_key'])) $pgConfig['api_key'] = $settings['duitku.api_key'];
+    if (isset($settings['duitku.base_url'])) $pgConfig['base_url'] = $settings['duitku.base_url'];
+    if (isset($settings['duitku.sandbox'])) $pgConfig['sandbox'] = $settings['duitku.sandbox'];
 } catch (RuntimeException $e) {
     if ($postAction === 'save_seo_config') {
         $seoConfigError = $e->getMessage();
@@ -1846,8 +1846,8 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
             <!-- ── 6. Payment Gateway ─────────────────────────────────────── -->
             <section id="config-panel-payment" class="config-panel" data-config-panel="payment" role="tabpanel" aria-label="Payment Gateway">
                 <div class="config-card">
-                    <h2 class="config-card-title">6. Payment Gateway (iPaymu)</h2>
-                    <p style="margin:0 0 1.2rem;font-size:.875rem;color:var(--text-secondary);">Konfigurasi iPaymu akan disimpan di database dan digunakan oleh sistem pembayaran. Isi VA dan API Key dari dashboard iPaymu Anda.</p>
+                    <h2 class="config-card-title">6. Payment Gateway (Duitku)</h2>
+                    <p style="margin:0 0 1.2rem;font-size:.875rem;color:var(--text-secondary);">Konfigurasi Duitku disimpan di database dan dipakai oleh sistem pembayaran. Sandbox Duitku mendukung localhost/XAMPP untuk testing.</p>
 
                     <?php if ($pgConfigError !== ''): ?>
                         <div class="admin-alert error"><?php echo htmlspecialchars($pgConfigError, ENT_QUOTES, 'UTF-8'); ?></div>
@@ -1860,43 +1860,42 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                         <input type="hidden" name="action" value="save_payment_gateway_config">
                         <div class="admin-form-grid">
                             <div class="form-group">
-                                <label for="pg-va">Virtual Account (VA) <span style="color:#f87171">*</span></label>
-                                <input type="text" id="pg-va" name="ipaymu_va"
-                                    value="<?php echo htmlspecialchars($pgConfig['va'], ENT_QUOTES, 'UTF-8'); ?>"
-                                    placeholder="Nomor VA iPaymu Anda"
+                                <label for="pg-merchant-code">Merchant Code <span style="color:#f87171">*</span></label>
+                                <input type="text" id="pg-merchant-code" name="duitku_merchant_code"
+                                    value="<?php echo htmlspecialchars($pgConfig['merchant_code'], ENT_QUOTES, 'UTF-8'); ?>"
+                                    placeholder="Merchant Code Duitku"
                                     autocomplete="off" required>
-                                <small style="color:var(--text-secondary);font-size:.78rem;">Contoh: 0000007289765</small>
                             </div>
                             <div class="form-group">
                                 <label for="pg-api-key">API Key <span style="color:#f87171">*</span></label>
-                                <input type="text" id="pg-api-key" name="ipaymu_api_key"
+                                <input type="text" id="pg-api-key" name="duitku_api_key"
                                     value="<?php echo htmlspecialchars($pgConfig['api_key'], ENT_QUOTES, 'UTF-8'); ?>"
-                                    placeholder="Secret API Key dari dashboard iPaymu"
+                                    placeholder="API Key dari dashboard Duitku"
                                     autocomplete="off" required>
                             </div>
                             <div class="form-group full">
                                 <label for="pg-base-url">Base URL API</label>
-                                <input type="url" id="pg-base-url" name="ipaymu_base_url"
+                                <input type="url" id="pg-base-url" name="duitku_base_url"
                                     value="<?php echo htmlspecialchars($pgConfig['base_url'], ENT_QUOTES, 'UTF-8'); ?>"
-                                    placeholder="https://my.ipaymu.com/api/v2">
-                                <small style="color:var(--text-secondary);font-size:.78rem;">Production: <code>https://my.ipaymu.com/api/v2</code> &nbsp;|&nbsp; Sandbox: <code>https://sandbox.ipaymu.com/api/v2</code></small>
+                                    placeholder="https://sandbox.duitku.com/webapi/api/merchant">
+                                <small style="color:var(--text-secondary);font-size:.78rem;">Production: <code>https://passport.duitku.com/webapi/api/merchant</code> &nbsp;|&nbsp; Sandbox: <code>https://sandbox.duitku.com/webapi/api/merchant</code></small>
                             </div>
                             <div class="form-group full" style="display:flex;align-items:center;gap:.75rem;">
-                                <input type="checkbox" id="pg-sandbox" name="ipaymu_sandbox" value="1"
+                                <input type="checkbox" id="pg-sandbox" name="duitku_sandbox" value="1"
                                     <?php echo $pgConfig['sandbox'] === '1' ? 'checked' : ''; ?>>
-                                <label for="pg-sandbox" style="margin:0;cursor:pointer;">Mode Sandbox (aktifkan untuk testing, nonaktifkan di production)</label>
+                                <label for="pg-sandbox" style="margin:0;cursor:pointer;">Mode Sandbox (direkomendasikan saat testing localhost/XAMPP)</label>
                             </div>
                         </div>
                         <div style="margin-top:1.25rem;display:flex;gap:.75rem;align-items:center;">
                             <button type="submit" class="btn btn-primary">Simpan Konfigurasi</button>
-                            <a href="https://my.ipaymu.com" target="_blank" rel="noopener noreferrer"
-                                style="font-size:.85rem;color:var(--text-secondary);text-decoration:underline;">Dashboard iPaymu &rarr;</a>
+                            <a href="https://dashboard.duitku.com" target="_blank" rel="noopener noreferrer"
+                                style="font-size:.85rem;color:var(--text-secondary);text-decoration:underline;">Dashboard Duitku &rarr;</a>
                         </div>
                     </form>
 
                     <div style="margin-top:1.5rem;padding:1rem;background:var(--bg-surface);border:1px dashed var(--border-color);border-radius:var(--radius-md);font-size:.82rem;color:var(--text-secondary);">
                         <strong style="color:var(--text-primary);">Status saat ini:</strong><br>
-                        VA: <code><?php echo $pgConfig['va'] !== '' ? str_repeat('*', max(0, strlen($pgConfig['va']) - 4)) . substr($pgConfig['va'], -4) : '<em>belum diset</em>'; ?></code> &nbsp;|
+                        Merchant Code: <code><?php echo $pgConfig['merchant_code'] !== '' ? str_repeat('*', max(0, strlen($pgConfig['merchant_code']) - 4)) . substr($pgConfig['merchant_code'], -4) : '<em>belum diset</em>'; ?></code> &nbsp;|
                         API Key: <code><?php echo $pgConfig['api_key'] !== '' ? str_repeat('*', 8) . substr($pgConfig['api_key'], -4) : '<em>belum diset</em>'; ?></code> &nbsp;|
                         Mode: <strong><?php echo $pgConfig['sandbox'] === '1' ? '<span style="color:#fbbf24">Sandbox</span>' : '<span style="color:#4ade80">Production</span>'; ?></strong>
                     </div>

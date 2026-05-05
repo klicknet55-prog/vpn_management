@@ -2,7 +2,7 @@
 /**
  * Payment Controller
  *
- * POST  action=create_invoice  → buat invoice + redirect ke iPaymu
+ * POST  action=create_invoice  → buat invoice + redirect ke Duitku
  * GET   action=history         → riwayat pembayaran user
  */
 
@@ -11,7 +11,7 @@ header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/security.php';
-require_once __DIR__ . '/IPaymuService.php';
+require_once __DIR__ . '/DuitkuService.php';
 require_once __DIR__ . '/../system/models/Plan.php';
 require_once __DIR__ . '/../system/models/Payment.php';
 require_once __DIR__ . '/../system/models/Invoice.php';
@@ -73,7 +73,7 @@ try {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Buat payment + invoice, lalu ambil URL pembayaran dari iPaymu.
+ * Buat payment + invoice, lalu ambil URL pembayaran dari Duitku.
  */
 function handleCreateInvoice(PDO $db, int $userId, array $input): void
 {
@@ -114,11 +114,11 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
         return;
     }
 
-    // Periksa iPaymu config
+    // Periksa Duitku config
     $pgConfig = getPaymentGatewayConfig($db);
-    $va     = $pgConfig['va'];
+    $merchantCode = $pgConfig['merchant_code'];
     $apiKey = $pgConfig['api_key'];
-    if (!$va || !$apiKey) {
+    if (!$merchantCode || !$apiKey) {
         http_response_code(503);
         echo json_encode(['ok' => false, 'error' => 'Payment gateway belum dikonfigurasi. Hubungi admin.']);
         return;
@@ -153,26 +153,29 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
         'payment_url'    => null,
     ]);
 
-    // Panggil iPaymu
-    $ipaymu = new IPaymuService($va, $apiKey, $pgConfig['base_url']);
+    // Panggil Duitku
+    $duitku = new DuitkuService($merchantCode, $apiKey, $pgConfig['base_url']);
 
     $notifyUrl = APP_URL . '/api/payment-webhook.php';
     $returnUrl = APP_URL . '/user/payment-return.php?invoice=' . urlencode($invoiceNumber) . '&status=success';
-    $cancelUrl = APP_URL . '/user/payment-return.php?invoice=' . urlencode($invoiceNumber) . '&status=cancel';
 
-    $result = $ipaymu->createPayment([
-        'product'     => [$plan['label'] . ' – ' . $plan['duration_days'] . ' hari'],
-        'qty'         => [1],
-        'price'       => [$amount],
-        'amount'      => $amount,
-        'returnUrl'   => $returnUrl,
-        'cancelUrl'   => $cancelUrl,
-        'notifyUrl'   => $notifyUrl,
-        'buyerName'   => $name,
-        'buyerEmail'  => $email,
-        'buyerPhone'  => $phone,
-        'referenceId' => $invoiceNumber,
-        'expired'     => 24,
+    $result = $duitku->createInvoice([
+        'merchantOrderId' => $invoiceNumber,
+        'paymentAmount'   => $amount,
+        'productDetails'  => $plan['label'] . ' - ' . $plan['duration_days'] . ' hari',
+        'email'           => $email,
+        'phoneNumber'     => $phone,
+        'customerVaName'  => $name,
+        'callbackUrl'     => $notifyUrl,
+        'returnUrl'       => $returnUrl,
+        'expiryPeriod'    => 1440,
+        'itemDetails'     => [
+            [
+                'name'     => $plan['label'] . ' - ' . $plan['duration_days'] . ' hari',
+                'price'    => $amount,
+                'quantity' => 1,
+            ],
+        ],
     ]);
 
     if (!$result['ok']) {
@@ -188,22 +191,22 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
         return;
     }
 
-    // Simpan payment_url dan session_id ke invoice
+    // Simpan payment_url ke invoice
     $invoiceModel->setPaymentUrl($invoiceId, $result['payment_url']);
     $invoiceModel->updateStatus($invoiceId, 'sent');
 
-    // Simpan session_id ke payment notes
+    // Simpan reference Duitku ke payment notes
     $db->prepare(
-        'UPDATE payments SET notes = CONCAT(COALESCE(notes,""), ?, " session=", ?)
+        'UPDATE payments SET notes = CONCAT(COALESCE(notes,""), ?, " reference=", ?)
          WHERE id = ?'
-    )->execute(['', $result['session_id'] ?? '', $paymentId]);
+    )->execute(['', $result['reference'] ?? '', $paymentId]);
 
     echo json_encode([
         'ok'   => true,
         'data' => [
             'invoice_number' => $invoiceNumber,
             'payment_url'    => $result['payment_url'],
-            'session_id'     => $result['session_id'],
+            'reference'      => $result['reference'] ?? '',
             'amount'         => $amount,
             'expired_at'     => $expiredAt,
         ],

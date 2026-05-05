@@ -1,7 +1,7 @@
 <?php
 /**
  * Model: PaymentNotification
- * Menyimpan raw webhook dari iPaymu untuk audit trail.
+ * Menyimpan raw webhook dari payment gateway untuk audit trail.
  */
 class PaymentNotification
 {
@@ -12,7 +12,7 @@ class PaymentNotification
         $this->db = $db;
     }
 
-    /** Simpan notifikasi webhook mentah dari iPaymu */
+    /** Simpan notifikasi webhook mentah dari gateway */
     public function log(array $data): int
     {
         $stmt = $this->db->prepare(
@@ -30,7 +30,7 @@ class PaymentNotification
         return (int) $this->db->lastInsertId();
     }
 
-    /** Ambil log notifikasi berdasarkan trx_id iPaymu */
+    /** Ambil log notifikasi berdasarkan trx_id/reference gateway */
     public function findByTrxId(string $trxId): array|false
     {
         $stmt = $this->db->prepare('SELECT * FROM payment_notifications WHERE trx_id = ? ORDER BY id DESC LIMIT 1');

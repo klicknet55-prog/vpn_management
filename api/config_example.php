@@ -27,11 +27,11 @@ define('APP_URL', rtrim(env('APP_URL', 'http://localhost/templatemo'), '/'));
 // -- Security -----------------------------------------------------------------
 define('SECRET_BYTES', (int) env('SECRET_BYTES', 16));
 
-// -- iPaymu Payment Gateway ---------------------------------------------------
-define('IPAYMU_VA',       env('IPAYMU_VA',       'your-virtual-account-number'));
-define('IPAYMU_API_KEY',  env('IPAYMU_API_KEY',   'your-ipaymu-api-key'));
-define('IPAYMU_BASE_URL', env('IPAYMU_BASE_URL',  'https://my.ipaymu.com/api/v2'));
-define('IPAYMU_SANDBOX',  env('IPAYMU_SANDBOX',   '0') === '1');
+// -- Duitku Payment Gateway ---------------------------------------------------
+define('DUITKU_MERCHANT_CODE', env('DUITKU_MERCHANT_CODE', 'your-merchant-code'));
+define('DUITKU_API_KEY',       env('DUITKU_API_KEY', 'your-duitku-api-key'));
+define('DUITKU_BASE_URL',      env('DUITKU_BASE_URL', 'https://sandbox.duitku.com/webapi/api/merchant'));
+define('DUITKU_SANDBOX',       env('DUITKU_SANDBOX', '1') === '1');
 
 // -- WA Send Runtime -----------------------------------------------------------
 define('WA_SEND_DELAY_MIN_MS', (int) env('WA_SEND_DELAY_MIN_MS', 1000));

@@ -221,7 +221,7 @@ require_once __DIR__ . '/../system/seo.php';
 
                     <div style="margin-top:1rem;">
                         <div class="admin-alert info" style="font-size:.8125rem;">
-                            Pembayaran diproses melalui iPaymu. Anda akan diarahkan ke halaman pembayaran setelah mengklik tombol di bawah.
+                            Pembayaran diproses melalui Duitku. Anda akan diarahkan ke halaman pembayaran setelah mengklik tombol di bawah.
                         </div>
                     </div>
 
@@ -349,7 +349,7 @@ require_once __DIR__ . '/../system/seo.php';
 
             if (!json.ok) throw new Error(json.error || 'Gagal membuat invoice.');
 
-            // Redirect ke payment URL iPaymu
+            // Redirect ke payment URL Duitku
             if (json.data?.payment_url) {
                 window.location.href = json.data.payment_url;
             } else {

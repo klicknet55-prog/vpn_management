@@ -23,13 +23,13 @@ function getDB(): PDO
 }
 
 /**
- * Baca konfigurasi iPaymu dari app_settings (UI admin), fallback ke konstanta .env.
+ * Baca konfigurasi Duitku dari app_settings (UI admin), fallback ke konstanta .env.
  *
- * @return array{va: string, api_key: string, base_url: string, sandbox: bool}
+ * @return array{merchant_code: string, api_key: string, base_url: string, sandbox: bool}
  */
 function getPaymentGatewayConfig(PDO $db): array
 {
-    $keys = ['ipaymu.va', 'ipaymu.api_key', 'ipaymu.base_url', 'ipaymu.sandbox'];
+    $keys = ['duitku.merchant_code', 'duitku.api_key', 'duitku.base_url', 'duitku.sandbox'];
     try {
         $placeholders = implode(',', array_fill(0, count($keys), '?'));
         $stmt = $db->prepare("SELECT config_key, config_value FROM app_settings WHERE config_key IN ($placeholders)");
@@ -48,9 +48,9 @@ function getPaymentGatewayConfig(PDO $db): array
     }
 
     return [
-        'va'       => $map['ipaymu.va']       ?? IPAYMU_VA,
-        'api_key'  => $map['ipaymu.api_key']  ?? IPAYMU_API_KEY,
-        'base_url' => $map['ipaymu.base_url'] ?? IPAYMU_BASE_URL,
-        'sandbox'  => isset($map['ipaymu.sandbox']) ? ($map['ipaymu.sandbox'] === '1') : IPAYMU_SANDBOX,
+        'merchant_code' => $map['duitku.merchant_code'] ?? DUITKU_MERCHANT_CODE,
+        'api_key'       => $map['duitku.api_key'] ?? DUITKU_API_KEY,
+        'base_url'      => $map['duitku.base_url'] ?? DUITKU_BASE_URL,
+        'sandbox'       => isset($map['duitku.sandbox']) ? ($map['duitku.sandbox'] === '1') : DUITKU_SANDBOX,
     ];
 }

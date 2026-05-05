@@ -81,7 +81,7 @@ class Invoice
         return $stmt->execute([$status, $paymentUrl, $id]);
     }
 
-    /** Update payment_url setelah iPaymu memberikan link bayar */
+    /** Update payment_url setelah gateway memberikan link bayar */
     public function setPaymentUrl(int $id, string $url): bool
     {
         $stmt = $this->db->prepare(
