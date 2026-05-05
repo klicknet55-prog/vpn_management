@@ -54,7 +54,7 @@ try {
 
     subCronLog('Mulai cek expired subscriptions...');
 
-    // Ambil daftar yang akan diblock sebelum di-disable (untuk email + WA)
+    // Ambil daftar yang akan diblock sebelum di-disable (untuk email + WA notifikasi)
     $expiredRows = $db->query(
         "SELECT us.user_id, us.expires_at, u.email, u.full_name, u.phone_number
          FROM user_subscriptions us
@@ -63,10 +63,10 @@ try {
            AND us.expires_at <= NOW()"
     )->fetchAll();
 
-    // Block semua
+    // Block subscription + suspend VPN + disconnect WA semua user yang expired
     $count = $service->blockExpired();
 
-    subCronLog("Subscription diblokir: {$count}");
+    subCronLog("Subscription diblokir: {$count} (VPN & WA device ikut di-suspend/disconnect)");
 
     // Kirim email + WA notifikasi ke setiap user yang diblock
     $mailSent = 0;

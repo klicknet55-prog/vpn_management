@@ -132,16 +132,109 @@ class SubscriptionService
     /**
      * Jalankan blocking semua subscription yang sudah expired.
      * Dipanggil oleh cron job.
-     * Return jumlah user yang diblokir.
+     *
+     * Untuk setiap user yang di-block:
+     * - Subscription di-set is_active = 0, disabled_reason = 'expired'
+     * - Semua VPN user miliknya di-suspend (via VPN API + update DB)
+     * - Semua WA device miliknya di-logout (via GoWA API + update DB)
+     *
+     * @return int Jumlah subscription yang diblokir.
      */
     public function blockExpired(): int
     {
         $expired = $this->subModel->getExpiredActive();
         $count   = 0;
         foreach ($expired as $row) {
-            $this->subModel->disable((int)$row['user_id'], 'expired');
+            $userId = (int) $row['user_id'];
+            $this->subModel->disable($userId, 'expired');
+            $this->suspendUserVpn($userId);
+            $this->disconnectUserWa($userId);
             $count++;
         }
         return $count;
+    }
+
+    /**
+     * Suspend semua VPN user milik $userId via VPN API + update DB.
+     * Gagal per-item tidak menghentikan proses.
+     */
+    private function suspendUserVpn(int $userId): void
+    {
+        try {
+            // Perlu load vpn-controller helper functions
+            $controllerPath = dirname(__DIR__, 2) . '/api/vpn-controller.php';
+            if (!function_exists('loadVpnApiConfig') && file_exists($controllerPath)) {
+                require_once $controllerPath;
+            }
+
+            if (!function_exists('loadVpnApiConfig')) {
+                return; // file tidak tersedia, skip
+            }
+
+            $vpnConfig = loadVpnApiConfig($this->db);
+
+            $rows = $this->db->prepare(
+                "SELECT username FROM vpn_users
+                 WHERE owner_user_id = :uid AND vpn_status = 'active'"
+            );
+            $rows->execute(['uid' => $userId]);
+            $vpnUsers = $rows->fetchAll();
+
+            foreach ($vpnUsers as $vpnRow) {
+                $username = (string) $vpnRow['username'];
+                try {
+                    vpnApiRequest($vpnConfig, 'POST',
+                        $vpnConfig['endpoint_users'] . '/' . rawurlencode($username) . '/disable');
+                } catch (Throwable) { /* API offline, tetap update DB */ }
+
+                $this->db->prepare(
+                    "UPDATE vpn_users SET vpn_status = 'suspended', updated_at = NOW()
+                     WHERE username = :username"
+                )->execute(['username' => $username]);
+            }
+        } catch (Throwable) {
+            // VPN tidak dikonfigurasi atau error – skip, jangan block proses utama
+        }
+    }
+
+    /**
+     * Logout semua WA device milik $userId via GoWA API + update DB.
+     * Gagal per-item tidak menghentikan proses.
+     */
+    private function disconnectUserWa(int $userId): void
+    {
+        try {
+            $gowaPath = dirname(__DIR__, 2) . '/api/gowa.php';
+            if (!function_exists('gowaRequest') && file_exists($gowaPath)) {
+                require_once $gowaPath;
+            }
+
+            if (!function_exists('gowaRequest')) {
+                return;
+            }
+
+            $rows = $this->db->prepare(
+                "SELECT device_id FROM wa_accounts
+                 WHERE owner_user_id = :uid
+                   AND status IN ('connected', 'qr_ready', 'pending')"
+            );
+            $rows->execute(['uid' => $userId]);
+            $waDevices = $rows->fetchAll();
+
+            foreach ($waDevices as $waRow) {
+                $deviceId = (string) $waRow['device_id'];
+                try {
+                    gowaRequest('POST', '/devices/' . rawurlencode($deviceId) . '/logout');
+                } catch (Throwable) { /* GoWA offline, tetap update DB */ }
+
+                $this->db->prepare(
+                    'UPDATE wa_accounts
+                     SET status = "disconnected", disconnected_at = NOW(), updated_at = NOW()
+                     WHERE device_id = :device_id'
+                )->execute(['device_id' => $deviceId]);
+            }
+        } catch (Throwable) {
+            // GoWA tidak dikonfigurasi atau error – skip
+        }
     }
 }
