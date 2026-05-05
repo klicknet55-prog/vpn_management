@@ -82,7 +82,7 @@ if ($method === 'GET' && $action === 'list') {
             us.plan_id
          FROM users u
          LEFT JOIN user_subscriptions us ON us.user_id = u.id
-         LEFT JOIN subscription_plans  p  ON p.id = us.plan_id
+         LEFT JOIN plans  p  ON p.id = us.plan_id
          ORDER BY u.id ASC"
     )->fetchAll(PDO::FETCH_ASSOC);
     ok($rows);
