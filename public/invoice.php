@@ -1,4 +1,6 @@
 <?php
+session_start();
+
 require_once __DIR__ . '/../api/db.php';
 require_once __DIR__ . '/../api/config.php';
 require_once __DIR__ . '/../api/invoice-link.php';
@@ -11,6 +13,7 @@ $status = trim((string) ($_GET['status'] ?? ''));
 
 $isValidLink = invoicePublicValidate($invoiceNumber, $exp, $sig);
 $payment = null;
+$latestExpiresAt = null;
 $errorMessage = '';
 
 if (!$isValidLink) {
@@ -24,10 +27,56 @@ if (!$isValidLink) {
         $payment = $paymentModel->findByInvoiceNumber($invoiceNumber) ?: null;
         if (!$payment) {
             $errorMessage = 'Invoice tidak ditemukan.';
+        } else {
+            $subStmt = $db->prepare(
+                'SELECT expires_at
+                 FROM user_subscriptions
+                 WHERE user_id = ?
+                 ORDER BY expires_at DESC
+                 LIMIT 1'
+            );
+            $subStmt->execute([(int) ($payment['user_id'] ?? 0)]);
+            $subRow = $subStmt->fetch();
+            if ($subRow && !empty($subRow['expires_at'])) {
+                $latestExpiresAt = (string) $subRow['expires_at'];
+            }
         }
     } catch (Throwable) {
         $errorMessage = 'Terjadi gangguan saat mengambil detail invoice.';
     }
+}
+
+function fmtDateId(?string $dateTime): string
+{
+    $dateTime = trim((string) $dateTime);
+    if ($dateTime === '') {
+        return '-';
+    }
+
+    $ts = strtotime($dateTime);
+    if ($ts === false) {
+        return '-';
+    }
+
+    $months = [
+        1 => 'Januari',
+        2 => 'Februari',
+        3 => 'Maret',
+        4 => 'April',
+        5 => 'Mei',
+        6 => 'Juni',
+        7 => 'Juli',
+        8 => 'Agustus',
+        9 => 'September',
+        10 => 'Oktober',
+        11 => 'November',
+        12 => 'Desember',
+    ];
+
+    $day = date('d', $ts);
+    $month = $months[(int) date('n', $ts)] ?? date('m', $ts);
+    $year = date('Y', $ts);
+    return $day . ' ' . $month . ' ' . $year;
 }
 
 function publicInvoiceStatusLabel(string $status): string
@@ -54,8 +103,16 @@ function publicInvoiceStatusClass(string $status): string
 $displayStatus = $payment['status'] ?? (($status === 'success') ? 'pending' : 'failed');
 $planLabel = $payment['plan_label'] ?? '-';
 $amount = (int) ($payment['amount'] ?? 0);
-$paidAt = (string) ($payment['paid_at'] ?? '-');
+$paidAt = fmtDateId((string) ($payment['paid_at'] ?? ''));
+$expiredAt = fmtDateId($latestExpiresAt);
 $method = (string) ($payment['payment_method'] ?? '-');
+
+$sessionRoles = $_SESSION['roles'] ?? [];
+$isLoggedIn = !empty($_SESSION['logged_in']);
+$isAdmin = in_array('admin', $sessionRoles, true) || in_array('super_admin', $sessionRoles, true);
+$dashboardUrl = $isLoggedIn
+    ? ($isAdmin ? '../admin/index.php' : '../user/index.php')
+    : '../login.php';
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -114,6 +171,29 @@ $method = (string) ($payment['payment_method'] ?? '-');
             border-radius: 10px;
             padding: .75rem .9rem;
         }
+        .actions {
+            display: flex;
+            gap: .6rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: .6rem .9rem;
+            border-radius: 10px;
+            text-decoration: none;
+            font-size: .86rem;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            background: var(--bg-page);
+        }
+        .btn.primary {
+            background: var(--accent);
+            color: #fff;
+            border-color: transparent;
+        }
     </style>
 </head>
 <body>
@@ -133,7 +213,15 @@ $method = (string) ($payment['payment_method'] ?? '-');
                 <div class="row"><span class="k">Paket</span><span><?php echo htmlspecialchars((string) $planLabel, ENT_QUOTES, 'UTF-8'); ?></span></div>
                 <div class="row"><span class="k">Total</span><span>Rp <?php echo number_format($amount, 0, ',', '.'); ?></span></div>
                 <div class="row"><span class="k">Metode</span><span><?php echo htmlspecialchars($method, ENT_QUOTES, 'UTF-8'); ?></span></div>
-                <div class="row"><span class="k">Tanggal Bayar</span><span><?php echo htmlspecialchars($paidAt !== '' ? $paidAt : '-', ENT_QUOTES, 'UTF-8'); ?></span></div>
+                <div class="row"><span class="k">Tanggal Bayar</span><span><?php echo htmlspecialchars($paidAt, ENT_QUOTES, 'UTF-8'); ?></span></div>
+                <div class="row"><span class="k">Expired Terbaru</span><span><?php echo htmlspecialchars($expiredAt, ENT_QUOTES, 'UTF-8'); ?></span></div>
+
+                <div class="actions">
+                    <a class="btn primary" href="<?php echo htmlspecialchars($dashboardUrl, ENT_QUOTES, 'UTF-8'); ?>">Ke Dashboard</a>
+                    <?php if (!$isLoggedIn): ?>
+                        <a class="btn" href="../login.php">Login</a>
+                    <?php endif; ?>
+                </div>
             <?php endif; ?>
         </section>
     </div>

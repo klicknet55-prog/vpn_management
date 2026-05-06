@@ -188,6 +188,16 @@ $isSuccess   = ($status === 'success');
         const DELAY  = 6000; // 6 detik
 
         function fmt(n) { return new Intl.NumberFormat('id-ID').format(n); }
+        function fmtDateId(value) {
+            if (!value) return '—';
+            const dt = new Date(String(value).replace(' ', 'T'));
+            if (Number.isNaN(dt.getTime())) return '—';
+            return new Intl.DateTimeFormat('id-ID', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+            }).format(dt);
+        }
 
         function showState(state) {
             ['pending','paid','failed'].forEach(s => {
@@ -214,7 +224,7 @@ $isSuccess   = ($status === 'success');
                             <div class="inv-row"><span class="label">Paket</span><span>${p.plan_label || '—'}</span></div>
                             <div class="inv-row"><span class="label">Total Dibayar</span><span>Rp ${fmt(p.amount)}</span></div>
                             <div class="inv-row"><span class="label">Metode</span><span>${p.payment_method || '—'}</span></div>
-                            <div class="inv-row"><span class="label">Tanggal</span><span>${(p.paid_at || '').slice(0,10)}</span></div>
+                            <div class="inv-row"><span class="label">Tanggal</span><span>${fmtDateId(p.paid_at)}</span></div>
                         </div>`;
                     showState('paid');
                     return;

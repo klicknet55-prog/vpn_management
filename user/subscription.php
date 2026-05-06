@@ -241,6 +241,16 @@ require_once __DIR__ . '/../system/seo.php';
     // ── helpers ──────────────────────────────────────────────
     function fmt(n) { return new Intl.NumberFormat('id-ID').format(n); }
     function fmtRp(n) { return 'Rp ' + fmt(n); }
+    function fmtDateId(value) {
+        if (!value) return '—';
+        const dt = new Date(String(value).replace(' ', 'T'));
+        if (Number.isNaN(dt.getTime())) return '—';
+        return new Intl.DateTimeFormat('id-ID', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric'
+        }).format(dt);
+    }
 
     function daysPill(days, isActive) {
         if (!isActive) return '<span class="days-pill expired">Expired</span>';
@@ -290,8 +300,8 @@ require_once __DIR__ . '/../system/seo.php';
                     ${!d.is_active && d.disabled_reason ? `<span style="font-size:.75rem;color:var(--danger);">— ${d.disabled_reason}</span>` : ''}
                 </div>
                 <div style="margin-top:.875rem;display:flex;gap:1.5rem;flex-wrap:wrap;font-size:.8125rem;color:var(--text-secondary);">
-                    <span>Mulai: <strong style="color:var(--text-primary);">${d.started_at ? d.started_at.slice(0,10) : '—'}</strong></span>
-                    <span>Berakhir: <strong style="color:var(--text-primary);">${d.expires_at ? d.expires_at.slice(0,10) : '—'}</strong></span>
+                    <span>Mulai: <strong style="color:var(--text-primary);">${fmtDateId(d.started_at)}</strong></span>
+                    <span>Berakhir: <strong style="color:var(--text-primary);">${fmtDateId(d.expires_at)}</strong></span>
                 </div>`;
 
             if (!d.is_active) {
