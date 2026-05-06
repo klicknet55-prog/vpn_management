@@ -68,17 +68,11 @@ try {
 
     subCronLog("Subscription diblokir: {$count} (VPN & WA device ikut di-suspend/disconnect)");
 
-    // Kirim email + WA notifikasi ke setiap user yang diblock
-    $mailSent = 0;
-    $waSent   = 0;
+    // Kirim notifikasi WA ke setiap user yang diblock
+    $waSent = 0;
     foreach ($expiredRows as $row) {
         $name      = $row['full_name'] ?? 'User';
         $expiredAt = $row['expires_at'];
-
-        if (!empty($row['email'])) {
-            $sent = $notif->sendSubscriptionExpired($row['email'], $name, $expiredAt);
-            if ($sent) $mailSent++;
-        }
 
         if (!empty($row['phone_number'])) {
             $sent = $notif->sendWaSubscriptionExpired($row['phone_number'], $name, $expiredAt);
@@ -86,9 +80,6 @@ try {
         }
     }
 
-    if ($mailSent > 0) {
-        subCronLog("Email notifikasi terkirim: {$mailSent}");
-    }
     if ($waSent > 0) {
         subCronLog("WA notifikasi terkirim: {$waSent}");
     }

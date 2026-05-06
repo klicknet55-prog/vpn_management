@@ -181,9 +181,6 @@ try {
                     'amount' => $payment['amount'],
                     'paid_at' => $paidAt,
                 ];
-                if (!empty($user['email'])) {
-                    $notif->sendPaymentSuccess($user['email'], $user['full_name'] ?? 'User', $paymentData);
-                }
                 if (!empty($user['phone_number'])) {
                     $notif->sendWaPaymentSuccess($user['phone_number'], $user['full_name'] ?? 'User', $paymentData);
                 }

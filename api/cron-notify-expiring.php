@@ -63,21 +63,12 @@ try {
             $name      = $row['full_name'] ?? 'User';
             $expiredAt = $row['expires_at'];
 
-            if (!empty($row['email'])) {
-                $sent = $notif->sendSubscriptionExpiringSoon(
-                    $row['email'], $name, $days, $expiredAt
-                );
-                if ($sent) {
-                    $total++;
-                    notifyCronLog("Email {$days}d-warning → {$row['email']}");
-                }
-            }
-
             if (!empty($row['phone_number'])) {
                 $sent = $notif->sendWaSubscriptionExpiringSoon(
                     $row['phone_number'], $name, $days, $expiredAt
                 );
                 if ($sent) {
+                    $total++;
                     notifyCronLog("WA {$days}d-warning → {$row['phone_number']}");
                 }
             }
