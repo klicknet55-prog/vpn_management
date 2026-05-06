@@ -12,6 +12,7 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/DuitkuService.php';
+require_once __DIR__ . '/invoice-link.php';
 require_once __DIR__ . '/../system/models/Plan.php';
 require_once __DIR__ . '/../system/models/Payment.php';
 require_once __DIR__ . '/../system/models/Invoice.php';
@@ -161,7 +162,8 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
     $duitku = new DuitkuService($merchantCode, $apiKey, $pgConfig['base_url']);
 
     $notifyUrl = APP_URL . '/api/payment-webhook.php';
-    $returnUrl = APP_URL . '/user/payment-return.php?invoice=' . urlencode($invoiceNumber) . '&status=success';
+    $publicInvoiceUrl = invoicePublicBuildUrl($invoiceNumber, time() + (7 * 24 * 3600), 'success');
+    $returnUrl = $publicInvoiceUrl;
 
     $customerDetail = [
         'firstName' => $name,
@@ -230,6 +232,7 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
         'data' => [
             'invoice_number' => $invoiceNumber,
             'payment_url'    => $result['payment_url'],
+            'public_invoice_url' => $publicInvoiceUrl,
             'reference'      => $result['reference'] ?? '',
             'amount'         => $amount,
             'expired_at'     => $expiredAt,

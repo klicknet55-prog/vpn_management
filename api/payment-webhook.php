@@ -23,6 +23,7 @@ require_once __DIR__ . '/../system/models/Invoice.php';
 require_once __DIR__ . '/../system/models/PaymentNotification.php';
 require_once __DIR__ . '/../system/services/SubscriptionService.php';
 require_once __DIR__ . '/../system/services/NotificationService.php';
+require_once __DIR__ . '/invoice-link.php';
 
 if (strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
     http_response_code(405);
@@ -180,6 +181,7 @@ try {
                     'plan_label' => $payment['plan_label'] ?? '',
                     'amount' => $payment['amount'],
                     'paid_at' => $paidAt,
+                    'invoice_url' => invoicePublicBuildUrl($invoiceNumber, time() + (7 * 24 * 3600), 'success'),
                 ];
                 if (!empty($user['phone_number'])) {
                     $notif->sendWaPaymentSuccess($user['phone_number'], $user['full_name'] ?? 'User', $paymentData);

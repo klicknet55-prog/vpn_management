@@ -197,6 +197,12 @@ class NotificationService
         $plan    = $paymentData['plan_label']     ?? '-';
         $amount  = 'Rp ' . number_format((int)($paymentData['amount'] ?? 0), 0, ',', '.');
         $paidAt  = $paymentData['paid_at']        ?? '-';
+        $invoiceUrl = trim((string) ($paymentData['invoice_url'] ?? ''));
+
+        $invoiceUrlLine = '';
+        if ($invoiceUrl !== '') {
+            $invoiceUrlLine = "\nDetail invoice:\n{$invoiceUrl}\n";
+        }
 
         $message = "✅ *Pembayaran Berhasil!*\n\n"
             . "Halo *{$name}*,\n"
@@ -204,7 +210,9 @@ class NotificationService
             . "No. Invoice : {$inv}\n"
             . "Paket       : {$plan}\n"
             . "Total       : {$amount}\n"
-            . "Tanggal     : {$paidAt}\n\n"
+            . "Tanggal     : {$paidAt}\n"
+            . $invoiceUrlLine
+            . "\n"
             . "Lihat subscription Anda:\n{$subUrl}";
         return $this->sendWa($phone, $message);
     }

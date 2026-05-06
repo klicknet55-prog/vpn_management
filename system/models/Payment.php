@@ -35,7 +35,12 @@ class Payment
     /** Ambil payment berdasarkan ID */
     public function findById(int $id): array|false
     {
-        $stmt = $this->db->prepare('SELECT * FROM payments WHERE id = ?');
+        $stmt = $this->db->prepare(
+            'SELECT p.*, pl.label AS plan_label
+             FROM payments p
+             LEFT JOIN plans pl ON pl.id = p.plan_id
+             WHERE p.id = ?'
+        );
         $stmt->execute([$id]);
         return $stmt->fetch();
     }
@@ -43,7 +48,12 @@ class Payment
     /** Ambil payment berdasarkan invoice number */
     public function findByInvoiceNumber(string $invoiceNumber): array|false
     {
-        $stmt = $this->db->prepare('SELECT * FROM payments WHERE invoice_number = ?');
+        $stmt = $this->db->prepare(
+            'SELECT p.*, pl.label AS plan_label
+             FROM payments p
+             LEFT JOIN plans pl ON pl.id = p.plan_id
+             WHERE p.invoice_number = ?'
+        );
         $stmt->execute([$invoiceNumber]);
         return $stmt->fetch();
     }
