@@ -428,8 +428,6 @@ try {
         $burstPauseMaxMs = max(0, (int) ($_POST['wa_burst_pause_max_ms'] ?? WA_SEND_BURST_PAUSE_MAX_MS));
         $queueBatchLimit = max(1, (int) ($_POST['wa_queue_batch_limit'] ?? WA_QUEUE_BATCH_LIMIT));
         $queueMaxAttempts = max(1, (int) ($_POST['wa_queue_max_attempts'] ?? WA_QUEUE_MAX_ATTEMPTS));
-        $adminQueueEnabled = !empty($_POST['wa_admin_queue_enabled']) ? '1' : '0';
-        $userQueueEnabled = !empty($_POST['wa_user_queue_enabled']) ? '1' : '0';
 
         if ($delayMaxMs < $delayMinMs) {
             throw new RuntimeException('Delay max harus lebih besar atau sama dengan delay min.');
@@ -445,8 +443,6 @@ try {
         saveAppSetting($db, 'wa_runtime.burst_window_seconds', (string) $burstWindowSeconds, $updatedBy);
         saveAppSetting($db, 'wa_runtime.burst_pause_min_ms', (string) $burstPauseMinMs, $updatedBy);
         saveAppSetting($db, 'wa_runtime.burst_pause_max_ms', (string) $burstPauseMaxMs, $updatedBy);
-        saveAppSetting($db, 'wa_runtime.admin_queue_enabled', $adminQueueEnabled, $updatedBy);
-        saveAppSetting($db, 'wa_runtime.user_queue_enabled', $userQueueEnabled, $updatedBy);
         saveAppSetting($db, 'wa_runtime.queue_batch_limit', (string) $queueBatchLimit, $updatedBy);
         saveAppSetting($db, 'wa_runtime.queue_max_attempts', (string) $queueMaxAttempts, $updatedBy);
 
@@ -1324,18 +1320,6 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                             <div>
                                 <label class="form-label" for="wa_queue_max_attempts">Queue Max Attempts</label>
                                 <input class="form-input" type="number" min="1" id="wa_queue_max_attempts" name="wa_queue_max_attempts" value="<?php echo htmlspecialchars((string) ($waRuntimeConfig['queue_max_attempts'] ?? WA_QUEUE_MAX_ATTEMPTS), ENT_QUOTES, 'UTF-8'); ?>">
-                            </div>
-                            <div>
-                                <label style="display:flex;align-items:center;gap:.5rem;margin-top:1.8rem;">
-                                    <input type="checkbox" name="wa_admin_queue_enabled" value="1" <?php echo !empty($waRuntimeConfig['admin_queue_enabled']) ? 'checked' : ''; ?>>
-                                    <span>Default Queue untuk Admin</span>
-                                </label>
-                            </div>
-                            <div>
-                                <label style="display:flex;align-items:center;gap:.5rem;margin-top:1.8rem;">
-                                    <input type="checkbox" name="wa_user_queue_enabled" value="1" <?php echo !empty($waRuntimeConfig['user_queue_enabled']) ? 'checked' : ''; ?>>
-                                    <span>Default Queue untuk User</span>
-                                </label>
                             </div>
                             <div class="full" style="display:flex;justify-content:flex-end;">
                                 <button type="submit" class="btn btn-primary">Save WA Runtime Config</button>

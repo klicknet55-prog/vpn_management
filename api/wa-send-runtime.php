@@ -180,6 +180,21 @@ function waShouldUseQueue(string $scope, ?bool $requestedValue = null, ?PDO $db 
     return $config['user_queue_enabled'];
 }
 
+function waDeviceQueueEnabled(PDO $db, string $deviceId): bool
+{
+    try {
+        $stmt = $db->prepare('SELECT queue_enabled FROM wa_accounts WHERE device_id = :device_id LIMIT 1');
+        $stmt->execute(['device_id' => $deviceId]);
+        $row = $stmt->fetch();
+        if ($row !== false && isset($row['queue_enabled'])) {
+            return (bool) $row['queue_enabled'];
+        }
+    } catch (Throwable $e) {
+        // If query fails, return true (assume queue is enabled by default)
+    }
+    return true;
+}
+
 function ensureWaMessageQueueTable(PDO $db): void
 {
     $db->exec(

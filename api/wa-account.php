@@ -26,6 +26,14 @@ $method = strtoupper($_SERVER['REQUEST_METHOD']);
 $action = trim($_GET['action'] ?? '');
 $currentUser = requireAuthUser();
 
+// Ensure queue_enabled column exists
+try {
+    $db = getDB();
+    $db->exec('ALTER TABLE wa_accounts ADD COLUMN queue_enabled BOOLEAN NOT NULL DEFAULT 1 AFTER disconnected_at');
+} catch (Throwable $e) {
+    // Column may already exist
+}
+
 try {
     if ($method === 'GET' && $action === '') {
         handleList($currentUser);
@@ -43,7 +51,7 @@ try {
         handleTestSend($currentUser);
         return;
     }
-    if ($method === 'POST' && $action === '') {
+    if ($method === 'POST' && $action === '' && !isset($_GET['device_id'])) {
         $db = getDB();
         requireActiveSubscription($currentUser['id'], $db);
         requireFeatureLimit($currentUser['id'], 'wa_device', $db);
@@ -52,6 +60,10 @@ try {
     }
     if ($method === 'POST' && $action === 'disconnect') {
         handleDisconnect($currentUser);
+        return;
+    }
+    if ($method === 'POST' && $action === 'update_settings') {
+        handleUpdateSettings($currentUser);
         return;
     }
     if ($method === 'DELETE') {
@@ -237,6 +249,7 @@ function handleList(array $currentUser): void
             'status' => $status,
             'db_name' => $row['db_name'] ?? '',
             'webhook_url' => $row['webhook_url'],
+            'queue_enabled' => (bool) ($row['queue_enabled'] ?? true),
             'secret' => $canUseSensitiveActions ? $row['secret'] : null,
             'api_url' => $canUseSensitiveActions
                 ? APP_URL . '/wa-send.php?phone=%5Bnumber%5D&message=%5Btext%5D&secret=' . $row['secret']
@@ -682,4 +695,55 @@ function handleDisconnect(array $currentUser): void
     );
 
     echo json_encode(['ok' => $res['ok'], 'data' => gowaUnwrap($res['data'])]);
+}
+
+function handleUpdateSettings(array $currentUser): void
+{
+    $deviceId = trim($_GET['device_id'] ?? '');
+    if (!$deviceId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'device_id is required']);
+        return;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $db = getDB();
+    $deviceRow = assertDeviceAccessible($db, $deviceId, $currentUser);
+
+    $queueEnabled = isset($input['queue_enabled']) ? (bool) $input['queue_enabled'] : null;
+
+    $updateFields = [];
+    $params = ['device_id' => $deviceId];
+
+    if ($queueEnabled !== null) {
+        $updateFields[] = 'queue_enabled = :queue_enabled';
+        $params['queue_enabled'] = $queueEnabled ? 1 : 0;
+    }
+
+    if (!$updateFields) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No settings provided']);
+        return;
+    }
+
+    $updateFields[] = 'updated_at = NOW()';
+    $sql = 'UPDATE wa_accounts SET ' . implode(', ', $updateFields) . ' WHERE device_id = :device_id';
+    $db->prepare($sql)->execute($params);
+
+    writeAuditLog(
+        $db,
+        $currentUser['id'],
+        'wa_device_settings_update',
+        'wa_device',
+        $deviceId,
+        [
+            'queue_enabled' => $queueEnabled,
+        ]
+    );
+
+    echo json_encode([
+        'ok' => true,
+        'device_id' => $deviceId,
+        'queue_enabled' => $queueEnabled,
+    ]);
 }

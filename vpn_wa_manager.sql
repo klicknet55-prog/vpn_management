@@ -212,6 +212,7 @@ CREATE TABLE IF NOT EXISTS wa_accounts (
   qr_fetched_at     TIMESTAMP    NULL,
   connected_at      TIMESTAMP    NULL,
   disconnected_at   TIMESTAMP    NULL,
+  queue_enabled     BOOLEAN      NOT NULL DEFAULT 1 COMMENT 'Enable WA message queue untuk device ini',
   last_error        TEXT         NULL,
   created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

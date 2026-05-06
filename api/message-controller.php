@@ -363,6 +363,11 @@ function sendAdminMessage(PDO $db, string $phone, string $message, string $expli
 
     $source = trim((string) ($options['source'] ?? 'message_controller'));
     $shouldUseQueue = waShouldUseQueue('admin', $options['use_queue'] ?? null, $db);
+    
+    // Check device-specific queue setting
+    if ($shouldUseQueue && !waDeviceQueueEnabled($db, $deviceId)) {
+        $shouldUseQueue = false;
+    }
 
     if ($shouldUseQueue) {
         $queueId = enqueueWaMessage($db, $deviceId, $phone, $message, $source, 'admin', [

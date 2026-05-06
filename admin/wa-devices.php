@@ -492,6 +492,46 @@ $gowaScriptVer = file_exists(__DIR__ . '/../gowa-devices.js') ? filemtime(__DIR_
         </div>
     </div>
 
+    <!-- Device Settings Modal -->
+    <div id="modal-device-settings" class="modal-overlay" style="display:none;" onclick="gowaCloseDeviceSettings(event)">
+        <div class="modal-box" style="max-width:460px;" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title">Pengaturan Device</h3>
+                    <p style="font-size:0.8125rem;color:var(--text-secondary);margin-top:0.25rem;">Device: <strong id="settings-device-name"></strong></p>
+                </div>
+                <button class="modal-close" onclick="gowaCloseDeviceSettings()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+            </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:1.25rem;">
+                <div id="settings-error" style="display:none;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:0.75rem 1rem;font-size:0.875rem;color:var(--danger);">
+                    <strong>Error:</strong> <span id="settings-error-msg"></span>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0.75rem;background:rgba(99,102,241,0.05);border-radius:8px;border:1px solid rgba(99,102,241,0.15);">
+                    <div>
+                        <p style="font-weight:500;color:var(--text-primary);">Queue WA Messages</p>
+                        <p style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.25rem;">Aktifkan antrian untuk pengiriman pesan yang terkontrol</p>
+                    </div>
+                    <label style="position:relative;display:inline-flex;width:50px;height:28px;cursor:pointer;">
+                        <input type="checkbox" id="settings-queue-enabled" style="position:absolute;opacity:0;cursor:pointer;width:100%;height:100%;">
+                        <span style="position:absolute;top:0;left:0;right:0;bottom:0;background-color:var(--border);border-radius:14px;transition:0.3s;"></span>
+                        <span style="position:absolute;top:2px;left:2px;width:24px;height:24px;background-color:white;border-radius:12px;transition:0.3s;"></span>
+                        <style>
+                            #settings-queue-enabled:checked + span { background-color: var(--success); }
+                            #settings-queue-enabled:checked + span + span { left: 24px; }
+                        </style>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="gowaCloseDeviceSettings()">Batal</button>
+                <button class="btn btn-primary" id="btn-save-settings" onclick="gowaSaveDeviceSettings()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    Simpan
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script src="../templatemo-daynight-script.js?v=<?php echo (int) $dayNightScriptVer; ?>"></script>
     <script src="../gowa-devices.js?v=<?php echo (int) $gowaScriptVer; ?>"></script>
 

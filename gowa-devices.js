@@ -192,6 +192,13 @@ function deviceRow(d) {
           + '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
           + ' API</button>'
         : '';
+    const settingsBtn = (!isForeignUserDeviceOnAdminPage)
+        ? '<button class="btn" style="padding:0.4rem 0.625rem;font-size:0.8125rem;color:var(--accent-muted);border:1px solid rgba(99,102,241,0.2);"'
+          + ' title="Pengaturan device" onclick="gowaOpenDeviceSettings(\'' + id + '\',\'' + gowaEscapeAttr(label) + '\')">'
+          + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">'
+          + '<circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 0l4.24-4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08 0l4.24 4.24"/></svg>'
+          + '</button>'
+        : '';
 
     return '<tr id="row-' + gowaEscapeAttr(id) + '">'
         + '<td><div style="width:36px;height:36px;border-radius:8px;background:var(--accent-light);color:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:0.875rem;">' + initial + '</div></td>'
@@ -204,7 +211,7 @@ function deviceRow(d) {
         + '<td>' + statusToBadge(status) + '</td>'
         + '<td style="font-size:0.8125rem;color:var(--text-secondary);">' + lastConnStr + '</td>'
         + '<td><div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">'
-        + primaryBtn + testBtn + apiBtn
+        + primaryBtn + testBtn + apiBtn + settingsBtn
         + '<button class="btn" style="padding:0.4rem 0.625rem;font-size:0.8125rem;color:var(--danger);border:1px solid rgba(239,68,68,0.3);"'
         + ' title="Hapus device" onclick="gowaOpenDeleteModal(\'' + id + '\',\'' + dbId + '\',\'' + gowaEscapeAttr(label) + '\')">'
         + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>'
@@ -527,6 +534,80 @@ async function gowaSendTestMessage() {
         }
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Kirim'; }
+    }
+}
+
+// ─────────────────────────────────────────────────────
+// DEVICE SETTINGS MODAL
+// ─────────────────────────────────────────────────────
+let _settingsDeviceId = null;
+let _settingsDeviceData = null;
+
+function gowaOpenDeviceSettings(deviceId, label) {
+    const d = _devices.find(x => x.device_id === deviceId);
+    if (!d) {
+        showToastMsg('Device tidak ditemukan', 'error');
+        return;
+    }
+    _settingsDeviceId = deviceId;
+    _settingsDeviceData = d;
+    setText('settings-device-name', label);
+    const queueToggle = document.getElementById('settings-queue-enabled');
+    if (queueToggle) {
+        queueToggle.checked = Boolean(d.queue_enabled);
+    }
+    hideEl('settings-error');
+    showModal('modal-device-settings');
+}
+
+function gowaCloseDeviceSettings(e) {
+    if (e && e.target.id !== 'modal-device-settings') return;
+    _settingsDeviceId = null;
+    _settingsDeviceData = null;
+    closeModal('modal-device-settings');
+}
+
+async function gowaSaveDeviceSettings() {
+    if (!_settingsDeviceId) return;
+    const queueToggle = document.getElementById('settings-queue-enabled');
+    const saveBtn = document.getElementById('btn-save-settings');
+    
+    if (!queueToggle) return;
+
+    hideEl('settings-error');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Menyimpan...'; }
+
+    try {
+        const payload = {
+            queue_enabled: Boolean(queueToggle.checked),
+        };
+
+        const params = new URLSearchParams({ action: 'update_settings', device_id: _settingsDeviceId });
+        const resp = await fetch(API + '?' + params.toString(), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        const json = await resp.json();
+
+        if (resp.ok && json.ok) {
+            showToastMsg('Pengaturan device berhasil disimpan', 'success');
+            if (_settingsDeviceData) {
+                _settingsDeviceData.queue_enabled = json.queue_enabled;
+            }
+            gowaCloseDeviceSettings();
+            await gowaLoadDevices();
+        } else {
+            showEl('settings-error');
+            setText('settings-error-msg', json.error || 'Gagal menyimpan pengaturan');
+        }
+    } catch (err) {
+        showEl('settings-error');
+        setText('settings-error-msg', err.message || 'Terjadi kesalahan');
+    } finally {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Simpan'; }
     }
 }
 
