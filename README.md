@@ -125,15 +125,32 @@ Data tersimpan di database:
 
 ## 7. Setup Cron Wajib
 
-Aplikasi memiliki 2 cron utama:
+Aplikasi memiliki 5 cron utama:
 
 1. Auto reconnect device WA
 - File: api/cron-reconnect.php
 - Fungsi: cek status device dan reconnect otomatis jika perlu
+- Jadwal: setiap 5 menit
 
 2. Queue worker WA
 - File: api/cron-process-wa-queue.php
 - Fungsi: memproses antrean pesan WA
+- Jadwal: setiap 1 menit
+
+3. Expire pending payments/invoices
+- File: api/cron-expire-payments.php
+- Fungsi: mengubah payment pending yang lewat batas waktu menjadi expired, lalu cancel invoice terkait
+- Jadwal: setiap 30 menit
+
+4. Block expired subscriptions
+- File: api/cron-expire-subscriptions.php
+- Fungsi: menonaktifkan subscription yang sudah expired, suspend VPN/disconnect WA, lalu kirim notifikasi WA
+- Jadwal: setiap 1 jam
+
+5. Reminder subscription akan habis
+- File: api/cron-notify-expiring.php
+- Fungsi: kirim pengingat WA H-3 dan H-1 sebelum masa aktif habis
+- Jadwal: setiap hari jam 08:00
 
 ### Contoh cron Linux
 
@@ -143,17 +160,35 @@ Jalankan reconnect tiap 5 menit:
 Jalankan queue worker tiap 1 menit:
 */1 * * * * php /path/to/templatemo/api/cron-process-wa-queue.php >> /var/log/wa-queue-worker.log 2>&1
 
+Jalankan expire payments tiap 30 menit:
+30 * * * * php /path/to/templatemo/api/cron-expire-payments.php >> /var/log/cron-payments.log 2>&1
+
+Jalankan expire subscriptions tiap 1 jam:
+0 * * * * php /path/to/templatemo/api/cron-expire-subscriptions.php >> /var/log/cron-subscriptions.log 2>&1
+
+Jalankan reminder expiring tiap hari jam 08:00:
+0 8 * * * php /path/to/templatemo/api/cron-notify-expiring.php >> /var/log/cron-notify.log 2>&1
+
 ### Contoh Task Scheduler Windows
 
-Buat 2 task terpisah:
+Jika server Windows, buat 5 task terpisah dengan Program/script:
+
+- Program/script: F:/xampp/php/php.exe
 
 Task 1 (reconnect, tiap 5 menit):
-- Program/script: F:/xampp/php/php.exe
 - Arguments: F:/xampp/htdocs/templatemo/api/cron-reconnect.php
 
 Task 2 (queue worker, tiap 1 menit):
-- Program/script: F:/xampp/php/php.exe
 - Arguments: F:/xampp/htdocs/templatemo/api/cron-process-wa-queue.php
+
+Task 3 (expire payments, tiap 30 menit):
+- Arguments: F:/xampp/htdocs/templatemo/api/cron-expire-payments.php
+
+Task 4 (expire subscriptions, tiap 1 jam):
+- Arguments: F:/xampp/htdocs/templatemo/api/cron-expire-subscriptions.php
+
+Task 5 (reminder expiring, tiap hari jam 08:00):
+- Arguments: F:/xampp/htdocs/templatemo/api/cron-notify-expiring.php
 
 ## 8. Cara Cek Instalasi Berhasil
 
@@ -164,6 +199,9 @@ Checklist:
 - Simpan konfigurasi WA berhasil
 - Cron reconnect berjalan tanpa error
 - Queue worker memproses data pending
+- Expire payments berjalan (status pending lama menjadi expired)
+- Expire subscriptions berjalan (subscription lewat masa aktif menjadi nonaktif)
+- Reminder expiring berjalan (pengingat WA H-3/H-1 terkirim)
 
 ## 9. Catatan Keamanan Produksi
 

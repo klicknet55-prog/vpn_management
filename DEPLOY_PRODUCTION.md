@@ -63,6 +63,14 @@ Setelah login pertama:
 
 ## 7. Cron yang Harus Aktif
 
+Pastikan semua cron berikut aktif:
+
+1. `api/cron-reconnect.php` (setiap 5 menit)
+2. `api/cron-process-wa-queue.php` (setiap 1 menit)
+3. `api/cron-expire-payments.php` (setiap 30 menit)
+4. `api/cron-expire-subscriptions.php` (setiap 1 jam)
+5. `api/cron-notify-expiring.php` (setiap hari jam 08:00)
+
 ## 7.1 Cron reconnect (setiap 5 menit)
 
 Linux:
@@ -82,6 +90,36 @@ Windows Task Scheduler:
 - Program: php.exe
 - Argumen: /path/to/templatemo/api/cron-process-wa-queue.php
 - Interval: 1 menit
+
+## 7.3 Cron expire payments (setiap 30 menit)
+
+Linux:
+30 * * * * php /path/to/templatemo/api/cron-expire-payments.php >> /var/log/cron-payments.log 2>&1
+
+Windows Task Scheduler:
+- Program: php.exe
+- Argumen: /path/to/templatemo/api/cron-expire-payments.php
+- Interval: 30 menit
+
+## 7.4 Cron expire subscriptions (setiap 1 jam)
+
+Linux:
+0 * * * * php /path/to/templatemo/api/cron-expire-subscriptions.php >> /var/log/cron-subscriptions.log 2>&1
+
+Windows Task Scheduler:
+- Program: php.exe
+- Argumen: /path/to/templatemo/api/cron-expire-subscriptions.php
+- Interval: 1 jam
+
+## 7.5 Cron notify expiring (setiap hari jam 08:00)
+
+Linux:
+0 8 * * * php /path/to/templatemo/api/cron-notify-expiring.php >> /var/log/cron-notify.log 2>&1
+
+Windows Task Scheduler:
+- Program: php.exe
+- Argumen: /path/to/templatemo/api/cron-notify-expiring.php
+- Interval: harian 08:00
 
 ## 8. Verifikasi Runtime WA
 
@@ -105,6 +143,9 @@ Checklist final:
 - Test kirim WA queued berhasil
 - Queue worker memproses pending job
 - Auto reconnect berjalan
+- Expire payments berjalan (pending lama menjadi expired)
+- Expire subscriptions berjalan (subscription lewat masa aktif menjadi nonaktif)
+- Reminder expiring berjalan (WA H-3/H-1 terkirim)
 - Tidak ada error fatal di log PHP/web server
 
 ## 10. Monitoring & Backup
