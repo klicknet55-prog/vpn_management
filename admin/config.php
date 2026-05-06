@@ -1939,6 +1939,21 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                         Mode: <strong><?php echo $pgConfig['sandbox'] === '1' ? '<span style="color:#fbbf24">Sandbox</span>' : '<span style="color:#4ade80">Production</span>'; ?></strong><br>
                         Metode aktif: <code><?php echo htmlspecialchars(implode(', ', $pgConfig['enabled_payment_methods']), ENT_QUOTES, 'UTF-8'); ?></code>
                     </div>
+
+                    <div style="margin-top:1rem;padding:1rem;background:var(--bg-surface);border:1px solid var(--border-color);border-radius:var(--radius-md);font-size:.82rem;">
+                        <strong style="color:var(--text-primary);display:block;margin-bottom:.5rem;">&#128279; Callback URL (Duitku &rarr; Notification URL)</strong>
+                        <p style="margin:0 0 .5rem;color:var(--text-secondary);">Masukkan URL ini di dashboard Duitku &rarr; <em>Project Settings &rarr; Notification URL</em>:</p>
+                        <?php $callbackUrl = rtrim((string) APP_URL, '/') . '/api/payment-webhook.php'; ?>
+                        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
+                            <code id="cb-url-text" style="background:var(--bg-page);border:1px solid var(--border-color);border-radius:6px;padding:.4rem .7rem;font-size:.82rem;word-break:break-all;flex:1;"><?php echo htmlspecialchars($callbackUrl, ENT_QUOTES, 'UTF-8'); ?></code>
+                            <button type="button" onclick="
+                                navigator.clipboard.writeText(document.getElementById('cb-url-text').textContent.trim())
+                                    .then(function(){ this.textContent='✓ Disalin!'; var b=this; setTimeout(function(){ b.textContent='Copy'; }, 2000); }.bind(this))
+                                    .catch(function(){ alert('Gagal copy. Salin manual.'); });
+                            " style="padding:.4rem .75rem;border:1px solid var(--border-color);border-radius:6px;background:var(--bg-page);color:var(--text-primary);cursor:pointer;font-size:.82rem;white-space:nowrap;">Copy</button>
+                        </div>
+                        <p style="margin:.5rem 0 0;color:var(--text-secondary);font-size:.78rem;">Return URL bisa dikosongkan atau diisi: <code><?php echo htmlspecialchars(rtrim((string) APP_URL, '/') . '/user/payment-return.php', ENT_QUOTES, 'UTF-8'); ?></code></p>
+                    </div>
                 </div>
             </section>
         </main>
