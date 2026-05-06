@@ -454,9 +454,9 @@ $gowaScriptVer = file_exists(__DIR__ . '/../gowa-devices.js') ? filemtime(__DIR_
                         <p style="font-size:0.75rem;color:#6b7280;margin:0.25rem 0 0 0;">Aktifkan antrian untuk pengiriman pesan yang terkontrol</p>
                     </div>
                     <label style="position:relative;display:inline-block;width:56px;height:32px;cursor:pointer;user-select:none;">
-                        <input type="checkbox" id="settings-queue-enabled" style="position:absolute;top:0;left:0;opacity:0;width:100%;height:100%;cursor:pointer;margin:0;z-index:10;" onchange="document.querySelector('.toggle-track').style.backgroundColor=this.checked?'#22c55e':'#d1d5db';document.querySelector('.toggle-thumb').style.left=this.checked?'calc(100% - 30px)':'2px';">
-                        <div class="toggle-track" style="position:absolute;top:50%;left:0;right:0;height:20px;background-color:#d1d5db;border-radius:10px;transform:translateY(-50%);transition:all 0.3s ease;margin:0;pointer-events:none;"></div>
-                        <div class="toggle-thumb" style="position:absolute;top:50%;left:2px;width:28px;height:28px;background-color:white;border-radius:50%;transform:translateY(-50%);transition:all 0.3s ease;box-shadow:0 2px 4px rgba(0,0,0,0.2);margin:0;pointer-events:none;"></div>
+                        <input type="checkbox" id="settings-queue-enabled" style="position:absolute;top:0;left:0;opacity:0;width:100%;height:100%;cursor:pointer;margin:0;z-index:10;">
+                        <div id="settings-queue-track" style="position:absolute;top:50%;left:0;right:0;height:20px;background-color:#d1d5db;border-radius:10px;transform:translateY(-50%);transition:all 0.3s ease;margin:0;pointer-events:none;"></div>
+                        <div id="settings-queue-thumb" style="position:absolute;top:50%;left:2px;width:28px;height:28px;background-color:white;border-radius:50%;transform:translateY(-50%);transition:all 0.3s ease;box-shadow:0 2px 4px rgba(0,0,0,0.2);margin:0;pointer-events:none;"></div>
                     </label>
                 </div>
             </div>

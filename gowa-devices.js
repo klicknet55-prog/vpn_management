@@ -543,6 +543,13 @@ async function gowaSendTestMessage() {
 let _settingsDeviceId = null;
 let _settingsDeviceData = null;
 
+function gowaSyncQueueToggleVisual(isChecked) {
+    const track = document.getElementById('settings-queue-track');
+    const thumb = document.getElementById('settings-queue-thumb');
+    if (track) track.style.backgroundColor = isChecked ? '#22c55e' : '#d1d5db';
+    if (thumb) thumb.style.left = isChecked ? 'calc(100% - 30px)' : '2px';
+}
+
 function gowaOpenDeviceSettings(deviceId, label) {
     const d = _devices.find(x => x.device_id === deviceId);
     if (!d) {
@@ -554,7 +561,9 @@ function gowaOpenDeviceSettings(deviceId, label) {
     setText('settings-device-name', label);
     const queueToggle = document.getElementById('settings-queue-enabled');
     if (queueToggle) {
-        queueToggle.checked = Boolean(d.queue_enabled);
+        const enabled = Boolean(d.queue_enabled);
+        queueToggle.checked = enabled;
+        gowaSyncQueueToggleVisual(enabled);
     }
     hideEl('settings-error');
     showModal('modal-device-settings');
@@ -680,6 +689,10 @@ document.addEventListener('DOMContentLoaded', () => {
             _deviceStatusFilter = String(e.target.value || 'all');
             applyDeviceSearch();
         });
+    }
+    const queueToggle = document.getElementById('settings-queue-enabled');
+    if (queueToggle) {
+        queueToggle.addEventListener('change', e => gowaSyncQueueToggleVisual(Boolean(e.target.checked)));
     }
     window.addEventListener('beforeunload', gowaStopPolling);
     gowaLoadDevices();
