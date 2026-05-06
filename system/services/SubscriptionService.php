@@ -63,7 +63,18 @@ class SubscriptionService
 
         $days      = ($overrideDays !== null && $overrideDays > 0) ? $overrideDays : (int) $plan['duration_days'];
         $startedAt = date('Y-m-d H:i:s');
-        $expiresAt = date('Y-m-d H:i:s', strtotime("+{$days} days"));
+
+        // Jika renew plan yang sama dan subscription masih aktif,
+        // extend dari expires_at yang ada (bukan dari sekarang) agar sisa hari tidak hangus.
+        $baseTime = time();
+        if (!$isUpgrade && !empty($current['expires_at'])) {
+            $currentExpiry = strtotime($current['expires_at']);
+            if ($currentExpiry > $baseTime) {
+                $baseTime = $currentExpiry;
+            }
+        }
+
+        $expiresAt = date('Y-m-d H:i:s', strtotime("+{$days} days", $baseTime));
 
         $this->subModel->upsert($userId, $planId, $startedAt, $expiresAt);
 
