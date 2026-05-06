@@ -95,7 +95,7 @@ class Payment
         ]);
     }
 
-    /** Generate nomor invoice unik: INV-YYYYMMDD-XXXX */
+    /** Generate nomor invoice unik: INV-YYYYMMDD-XXXXXXXX (dengan random suffix) */
     public function generateInvoiceNumber(): string
     {
         $date  = date('Ymd');
@@ -104,6 +104,8 @@ class Payment
         );
         $stmt->execute(["INV-{$date}-%"]);
         $count = (int) $stmt->fetchColumn();
-        return sprintf('INV-%s-%04d', $date, $count + 1);
+        $suffix = str_pad((string) ($count + 1), 4, '0', STR_PAD_LEFT);
+        $random = substr(md5(microtime(true) . random_bytes(16)), 0, 4);
+        return sprintf('INV-%s-%s%s', $date, $suffix, $random);
     }
 }

@@ -30,9 +30,10 @@ class DuitkuService
     {
         $merchantOrderId = (string) ($params['merchantOrderId'] ?? '');
         $paymentAmount = (int) ($params['paymentAmount'] ?? 0);
+        $paymentMethod = strtoupper(trim((string) ($params['paymentMethod'] ?? '')));
 
-        if ($merchantOrderId === '' || $paymentAmount <= 0) {
-            return ['ok' => false, 'error' => 'merchantOrderId/paymentAmount tidak valid.'];
+        if ($merchantOrderId === '' || $paymentAmount <= 0 || $paymentMethod === '') {
+            return ['ok' => false, 'error' => 'merchantOrderId/paymentAmount/paymentMethod tidak valid.'];
         }
 
         $productDetails = (string) ($params['productDetails'] ?? 'Subscription Payment');
@@ -43,8 +44,10 @@ class DuitkuService
         $returnUrl = (string) ($params['returnUrl'] ?? '');
         $expiryPeriod = (int) ($params['expiryPeriod'] ?? 1440);
 
-        $popBody = [
+        $body = [
+            'merchantCode'    => $this->merchantCode,
             'paymentAmount'   => $paymentAmount,
+            'paymentMethod'   => $paymentMethod,
             'merchantOrderId' => $merchantOrderId,
             'productDetails'  => $productDetails,
             'customerVaName'  => $customerVaName,
@@ -53,30 +56,17 @@ class DuitkuService
             'callbackUrl'     => $callbackUrl,
             'returnUrl'       => $returnUrl,
             'expiryPeriod'    => $expiryPeriod,
+            'signature'       => md5($this->merchantCode . $merchantOrderId . $paymentAmount . $this->apiKey),
         ];
         if (!empty($params['itemDetails']) && is_array($params['itemDetails'])) {
-            $popBody['itemDetails'] = $params['itemDetails'];
+            $body['itemDetails'] = $params['itemDetails'];
         }
         if (!empty($params['customerDetail']) && is_array($params['customerDetail'])) {
-            $popBody['customerDetail'] = $params['customerDetail'];
+            $body['customerDetail'] = $params['customerDetail'];
         }
 
-        // Primary path: official POP endpoint with x-duitku headers.
-        $result = $this->postPopCreateInvoice($popBody);
-
-        // Fallback path: API v2 inquiry for compatibility with older account setups.
-        if (!$result['ok']) {
-            $apiBody = $popBody;
-            $apiBody['merchantCode'] = $this->merchantCode;
-            $apiBody['signature'] = md5($this->merchantCode . $merchantOrderId . $paymentAmount . $this->apiKey);
-            $fallback = $this->post('/v2/inquiry', $apiBody);
-            if ($fallback['ok']) {
-                $result = $fallback;
-            } else {
-                $fallback['error'] = ($result['error'] ?? 'POP create invoice failed') . ' | API fallback failed: ' . ($fallback['error'] ?? 'unknown');
-                return $fallback;
-            }
-        }
+        $result = $this->post('/v2/inquiry', $body);
+        if (!$result['ok']) return $result;
 
         $data = $result['data'] ?? [];
         return [
@@ -87,40 +77,24 @@ class DuitkuService
         ];
     }
 
-    private function postPopCreateInvoice(array $body): array
-    {
-        $timestamp = (string) round(microtime(true) * 1000);
-        $signature = hash('sha256', $this->merchantCode . $timestamp . $this->apiKey);
-
-        $base = $this->resolvePopBaseUrl();
-        $url = rtrim($base, '/') . '/api/merchant/createInvoice';
-
-        $headers = [
-            'x-duitku-signature: ' . $signature,
-            'x-duitku-timestamp: ' . $timestamp,
-            'x-duitku-merchantcode: ' . $this->merchantCode,
-        ];
-
-        return $this->postAbsoluteUrl($url, $body, $headers);
-    }
-
-    private function resolvePopBaseUrl(): string
+    private function resolveV2BaseUrl(): string
     {
         $base = strtolower($this->baseUrl);
 
-        if (str_contains($base, 'api-prod.duitku.com') || str_contains($base, 'passport.duitku.com')) {
-            return 'https://api-prod.duitku.com';
+        if (str_contains($base, 'passport.duitku.com') || str_contains($base, 'api-prod.duitku.com')) {
+            return 'https://passport.duitku.com/webapi/api/merchant';
         }
-        if (str_contains($base, 'api-sandbox.duitku.com') || str_contains($base, 'sandbox.duitku.com')) {
-            return 'https://api-sandbox.duitku.com';
+        if (str_contains($base, 'sandbox.duitku.com') || str_contains($base, 'api-sandbox.duitku.com')) {
+            return 'https://sandbox.duitku.com/webapi/api/merchant';
         }
+        if (str_contains($base, '/webapi/api/merchant')) return $this->baseUrl;
 
-        return 'https://api-sandbox.duitku.com';
+        return 'https://sandbox.duitku.com/webapi/api/merchant';
     }
 
     private function post(string $path, array $body): array
     {
-        $url = $this->baseUrl . '/' . ltrim($path, '/');
+        $url = rtrim($this->resolveV2BaseUrl(), '/') . '/' . ltrim($path, '/');
         return $this->postAbsoluteUrl($url, $body);
     }
 
@@ -172,9 +146,15 @@ class DuitkuService
             ];
         }
 
-        $statusCode = (string) ($decoded['statusCode'] ?? '');
+        $statusCode = (string) ($decoded['statusCode'] ?? $decoded['responseCode'] ?? '');
         if ($httpStatus >= 400 || ($statusCode !== '' && $statusCode !== '00')) {
-            $msg = (string) ($decoded['statusMessage'] ?? $decoded['message'] ?? ('HTTP ' . $httpStatus));
+            $msg = (string) (
+                $decoded['statusMessage']
+                ?? $decoded['responseMessage']
+                ?? $decoded['Message']
+                ?? $decoded['message']
+                ?? ('HTTP ' . $httpStatus)
+            );
             return [
                 'ok' => false,
                 'error' => $msg,

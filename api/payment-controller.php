@@ -82,6 +82,7 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
     $name   = trim($input['name']  ?? '');
     $email  = trim($input['email'] ?? '');
     $phone  = trim($input['phone'] ?? '');
+    $requestedPaymentMethod = strtoupper(trim((string) ($input['payment_method'] ?? '')));
 
     if ($planId <= 0) {
         http_response_code(400);
@@ -120,18 +121,46 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
     $pgConfig = getPaymentGatewayConfig($db);
     $merchantCode = $pgConfig['merchant_code'];
     $apiKey = $pgConfig['api_key'];
+    $enabledMethods = is_array($pgConfig['enabled_payment_methods'] ?? null)
+        ? $pgConfig['enabled_payment_methods']
+        : [];
     if (!$merchantCode || !$apiKey) {
         http_response_code(503);
         echo json_encode(['ok' => false, 'error' => 'Payment gateway belum dikonfigurasi. Hubungi admin.']);
         return;
     }
+    if (empty($enabledMethods)) {
+        $enabledMethods = ['BC'];
+    }
+
+    if ($requestedPaymentMethod !== '' && !in_array($requestedPaymentMethod, $enabledMethods, true)) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'Metode pembayaran tidak diizinkan oleh konfigurasi admin.']);
+        return;
+    }
+
+    $candidateMethods = $requestedPaymentMethod !== '' ? [$requestedPaymentMethod] : $enabledMethods;
 
     $planLabel = (string) ($plan['label'] ?? $plan['name'] ?? 'Subscription Plan');
     $planDuration = (int) ($plan['duration_days'] ?? 30);
 
-    // Generate invoice number
+    // Generate invoice number dengan pengecekan keunikan
     $paymentModel = new Payment($db);
-    $invoiceNumber = $paymentModel->generateInvoiceNumber();
+    $invoiceNumber = null;
+    $maxRetries = 10;
+    for ($i = 0; $i < $maxRetries; $i++) {
+        $candidate = $paymentModel->generateInvoiceNumber();
+        $existing = $paymentModel->findByInvoiceNumber($candidate);
+        if (!$existing) {
+            $invoiceNumber = $candidate;
+            break;
+        }
+    }
+    if (!$invoiceNumber) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => 'Gagal membuat nomor invoice unik. Coba lagi dalam beberapa detik.']);
+        return;
+    }
     $expiredAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
 
     // Simpan payment dengan status pending
@@ -165,6 +194,17 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
     $publicInvoiceUrl = invoicePublicBuildUrl($invoiceNumber, time() + (7 * 24 * 3600), 'success');
     $returnUrl = $publicInvoiceUrl;
 
+    $customerVaName = preg_replace('/\s+/', ' ', $name) ?? $name;
+    $customerVaName = trim($customerVaName);
+    if (function_exists('mb_substr')) {
+        $customerVaName = mb_substr($customerVaName, 0, 20, 'UTF-8');
+    } else {
+        $customerVaName = substr($customerVaName, 0, 20);
+    }
+    if ($customerVaName === '') {
+        $customerVaName = 'Customer';
+    }
+
     $customerDetail = [
         'firstName' => $name,
         'lastName' => '',
@@ -172,27 +212,43 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
         'phoneNumber' => $phone,
     ];
 
-    $result = $duitku->createInvoice([
-        'merchantOrderId' => $invoiceNumber,
-        'paymentAmount'   => $amount,
-        'productDetails'  => $planLabel . ' - ' . $planDuration . ' hari',
-        'email'           => $email,
-        'phoneNumber'     => $phone,
-        'customerVaName'  => $name,
-        'callbackUrl'     => $notifyUrl,
-        'returnUrl'       => $returnUrl,
-        'expiryPeriod'    => 1440,
-        'customerDetail'  => $customerDetail,
-        'itemDetails'     => [
-            [
-                'name'     => $planLabel . ' - ' . $planDuration . ' hari',
-                'price'    => $amount,
-                'quantity' => 1,
-            ],
-        ],
-    ]);
+    $result = null;
+    $paymentMethod = '';
+    $attemptErrors = [];
 
-    if (!$result['ok']) {
+    foreach ($candidateMethods as $candidate) {
+        $tryResult = $duitku->createInvoice([
+            'merchantOrderId' => $invoiceNumber,
+            'paymentAmount'   => $amount,
+            'paymentMethod'   => $candidate,
+            'productDetails'  => $planLabel . ' - ' . $planDuration . ' hari',
+            'email'           => $email,
+            'phoneNumber'     => $phone,
+            'customerVaName'  => $customerVaName,
+            'callbackUrl'     => $notifyUrl,
+            'returnUrl'       => $returnUrl,
+            'expiryPeriod'    => 1440,
+            'customerDetail'  => $customerDetail,
+            'itemDetails'     => [
+                [
+                    'name'     => $planLabel . ' - ' . $planDuration . ' hari',
+                    'price'    => $amount,
+                    'quantity' => 1,
+                ],
+            ],
+        ]);
+
+        if (!empty($tryResult['ok'])) {
+            $result = $tryResult;
+            $paymentMethod = (string) $candidate;
+            break;
+        }
+
+        $attemptErrors[] = (string) ($candidate . ': ' . ($tryResult['error'] ?? 'Unknown error'));
+        $result = $tryResult;
+    }
+
+    if (!$result || !$result['ok']) {
         // Tandai payment sebagai failed (simple update, tanpa kolom gateway)
         $db->prepare('UPDATE payments SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
            ->execute(['failed', $paymentId]);
@@ -200,6 +256,9 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
 
         $httpStatus = (int) ($result['http_status'] ?? 0);
         $gatewayMsg = (string) ($result['error'] ?? 'Unknown error');
+        if (!empty($attemptErrors)) {
+            $gatewayMsg .= ' | metode dicoba: ' . implode('; ', $attemptErrors);
+        }
 
         // Log aman (tanpa API key/signature) untuk investigasi issue gateway.
         error_log('[DuitkuCreateInvoiceFail] invoice=' . $invoiceNumber
@@ -226,6 +285,8 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
         'UPDATE payments SET notes = CONCAT(COALESCE(notes,""), ?, " reference=", ?)
          WHERE id = ?'
     )->execute(['', $result['reference'] ?? '', $paymentId]);
+    $db->prepare('UPDATE payments SET payment_method = ? WHERE id = ?')
+       ->execute([$paymentMethod, $paymentId]);
 
     echo json_encode([
         'ok'   => true,
@@ -234,6 +295,7 @@ function handleCreateInvoice(PDO $db, int $userId, array $input): void
             'payment_url'    => $result['payment_url'],
             'public_invoice_url' => $publicInvoiceUrl,
             'reference'      => $result['reference'] ?? '',
+            'payment_method' => $paymentMethod,
             'amount'         => $amount,
             'expired_at'     => $expiredAt,
         ],

@@ -47,6 +47,7 @@ $amountRaw      = trim((string) ($payload['amount'] ?? '0'));
 $amountPaid     = (int) round((float) $amountRaw);
 $invoiceNumber  = trim((string) ($payload['merchantOrderId'] ?? ''));
 $resultCode     = trim((string) ($payload['resultCode'] ?? ''));
+$paymentCode    = strtoupper(trim((string) ($payload['paymentCode'] ?? '')));
 $reference      = trim((string) ($payload['reference'] ?? ''));
 $incomingSig    = trim((string) ($payload['signature'] ?? ''));
 
@@ -135,7 +136,7 @@ try {
             'status'         => $newStatus,
             'transaction_id' => $reference,
             'session_id'     => null,
-            'payment_method' => 'duitku',
+            'payment_method' => $paymentCode !== '' ? $paymentCode : 'duitku',
             'paid_at'        => $paidAt,
         ]);
         error_log('[webhook] updateAfterPayment result=' . ($updated ? 'OK' : 'FALSE'));

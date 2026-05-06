@@ -18,8 +18,49 @@ $sessionUserEmail = $_SESSION['email'] ?? '';
 // Pre-select plan dari query string (opsional)
 $preselectedPlanId = (int) ($_GET['plan_id'] ?? 0);
 
+require_once __DIR__ . '/../api/db.php';
 require_once __DIR__ . '/../system/seo.php';
+
+// Ambil daftar metode pembayaran aktif
+$paymentMethods = [];
+$paymentMethodLabels = [
+    'BC' => 'BCA Virtual Account',
+    'M2' => 'Mandiri Virtual Account',
+    'VA' => 'Maybank Virtual Account',
+    'I1' => 'BNI Virtual Account',
+    'B1' => 'CIMB Niaga Virtual Account',
+    'BT' => 'Permata Virtual Account',
+    'A1' => 'ATM Bersama',
+    'BR' => 'BRIVA',
+    'IR' => 'Indomaret',
+    'FT' => 'Retail (Pegadaian/ALFA/Pos)',
+    'OV' => 'OVO',
+    'DA' => 'DANA',
+    'SP' => 'QRIS ShopeePay',
+    'NQ' => 'QRIS Nobu',
+    'GQ' => 'QRIS Gudang Voucher',
+    'SQ' => 'QRIS Nusapay',
+    'VC' => 'Credit Card',
+    'JP' => 'Jenius Pay',
+    'DN' => 'Indodana Paylater',
+    'AT' => 'ATOME',
+    'T1' => 'Tokopedia Card',
+    'T2' => 'Tokopedia E-Wallet',
+    'T3' => 'Tokopedia Others',
+];
+
+try {
+    $pgConfig = getPaymentGatewayConfig(getDB());
+    $paymentMethods = is_array($pgConfig['enabled_payment_methods'] ?? null) ? $pgConfig['enabled_payment_methods'] : ['BC'];
+} catch (Throwable) {
+    $paymentMethods = ['BC'];
+}
+
+if (empty($paymentMethods)) {
+    $paymentMethods = ['BC'];
+}
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,6 +69,8 @@ require_once __DIR__ . '/../system/seo.php';
     <?php seoRenderHeadTags('Upgrade Paket - ' . webCompanyName()); ?>
     <script>
         window.PRESELECTED_PLAN_ID = <?php echo $preselectedPlanId; ?>;
+        window.PAYMENT_METHODS = <?php echo json_encode($paymentMethods, JSON_UNESCAPED_UNICODE); ?>;
+        window.PAYMENT_METHOD_LABELS = <?php echo json_encode($paymentMethodLabels, JSON_UNESCAPED_UNICODE); ?>;
         window.DAYNIGHT_SESSION = <?php echo json_encode([
             'fullName' => $sessionUserName,
             'email'    => $sessionUserEmail,
@@ -88,6 +131,8 @@ require_once __DIR__ . '/../system/seo.php';
         .form-label { display:block; font-size:.8125rem; margin-bottom:.35rem; color:var(--text-secondary); }
         .form-input  { width:100%; border:1px solid var(--border-color); border-radius:10px; background:var(--bg-surface); color:var(--text-primary); padding:.65rem .75rem; font-size:.875rem; }
         .form-input:focus { outline:none; border-color:var(--accent); }
+        select.form-input { cursor:pointer; padding:.65rem .75rem; }
+        select.form-input option { background:var(--bg-surface); color:var(--text-primary); padding:.5rem; }
 
         .admin-alert { padding:.625rem .75rem; border-radius:10px; font-size:.8125rem; }
         .admin-alert.error   { background:rgba(239,68,68,.08);   color:var(--danger);  border:1px solid rgba(239,68,68,.28); }
@@ -219,6 +264,18 @@ require_once __DIR__ . '/../system/seo.php';
                         <input id="inp-phone" type="tel" class="form-input" placeholder="08xxxxxxxxxx">
                     </div>
 
+                    <div style="margin-top:.75rem;">
+                        <label class="form-label">Metode Pembayaran</label>
+                        <select id="inp-payment-method" class="form-input" style="cursor:pointer;">
+                            <?php foreach ($paymentMethods as $method): ?>
+                                <option value="<?php echo htmlspecialchars($method, ENT_QUOTES, 'UTF-8'); ?>">
+                                    <?php echo htmlspecialchars($paymentMethodLabels[$method] ?? $method, ENT_QUOTES, 'UTF-8'); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <small style="display:block;margin-top:.25rem;color:var(--text-secondary);font-size:.75rem;">Pilih metode pembayaran yang Anda inginkan</small>
+                    </div>
+
                     <div style="margin-top:1rem;">
                         <div class="admin-alert info" style="font-size:.8125rem;">
                             Pembayaran diproses melalui Duitku. Anda akan diarahkan ke halaman pembayaran setelah mengklik tombol di bawah.
@@ -327,6 +384,7 @@ require_once __DIR__ . '/../system/seo.php';
         const name  = document.getElementById('inp-name').value.trim();
         const email = document.getElementById('inp-email').value.trim();
         const phone = document.getElementById('inp-phone').value.trim();
+        const paymentMethod = document.getElementById('inp-payment-method').value.trim();
 
         if (!name)  { showPayError('Nama lengkap wajib diisi.'); return; }
         if (!email) { showPayError('Email wajib diisi.'); return; }
@@ -346,6 +404,7 @@ require_once __DIR__ . '/../system/seo.php';
                     name,
                     email,
                     phone,
+                    payment_method: paymentMethod,
                 }),
             });
             const raw = await res.text();

@@ -35,6 +35,33 @@ $pgConfig = [
     'api_key'       => DUITKU_API_KEY,
     'base_url'      => DUITKU_BASE_URL,
     'sandbox'       => DUITKU_SANDBOX ? '1' : '0',
+    'enabled_payment_methods' => ['BC'],
+];
+
+$duitkuPaymentMethodCatalog = [
+    'BC' => 'BCA Virtual Account',
+    'M2' => 'Mandiri Virtual Account',
+    'VA' => 'Maybank Virtual Account',
+    'I1' => 'BNI Virtual Account',
+    'B1' => 'CIMB Niaga Virtual Account',
+    'BT' => 'Permata Virtual Account',
+    'A1' => 'ATM Bersama',
+    'BR' => 'BRIVA',
+    'IR' => 'Indomaret',
+    'FT' => 'Retail (Pegadaian/ALFA/Pos)',
+    'OV' => 'OVO',
+    'DA' => 'DANA',
+    'SP' => 'QRIS ShopeePay',
+    'NQ' => 'QRIS Nobu',
+    'GQ' => 'QRIS Gudang Voucher',
+    'SQ' => 'QRIS Nusapay',
+    'VC' => 'Credit Card',
+    'JP' => 'Jenius Pay',
+    'DN' => 'Indodana Paylater',
+    'AT' => 'ATOME',
+    'T1' => 'Tokopedia Card',
+    'T2' => 'Tokopedia E-Wallet',
+    'T3' => 'Tokopedia Others',
 ];
 
 $seoConfig = [
@@ -559,21 +586,31 @@ try {
         $pgApiKey = trim((string) ($_POST['duitku_api_key'] ?? ''));
         $pgBaseUrl = trim((string) ($_POST['duitku_base_url'] ?? 'https://sandbox.duitku.com/webapi/api/merchant'));
         $pgSandbox = !empty($_POST['duitku_sandbox']) ? '1' : '0';
+        $pgEnabledMethods = normalizeDuitkuPaymentMethods($_POST['duitku_enabled_payment_methods'] ?? []);
 
         if ($pgMerchantCode === '') throw new RuntimeException('Merchant Code wajib diisi.');
         if ($pgApiKey === '') throw new RuntimeException('API Key wajib diisi.');
         if ($pgBaseUrl === '') throw new RuntimeException('Base URL wajib diisi.');
+        if (empty($pgEnabledMethods)) throw new RuntimeException('Pilih minimal 1 metode pembayaran yang aktif.');
+
+        $pgEnabledMethods = array_values(array_filter(
+            $pgEnabledMethods,
+            static fn(string $code): bool => isset($duitkuPaymentMethodCatalog[$code])
+        ));
+        if (empty($pgEnabledMethods)) throw new RuntimeException('Metode pembayaran yang dipilih tidak valid.');
 
         $updatedBy = (int) ($_SESSION['user_id'] ?? 0) ?: null;
         saveAppSetting($db, 'duitku.merchant_code', $pgMerchantCode, $updatedBy);
         saveAppSetting($db, 'duitku.api_key', $pgApiKey, $updatedBy);
         saveAppSetting($db, 'duitku.base_url', $pgBaseUrl, $updatedBy);
         saveAppSetting($db, 'duitku.sandbox', $pgSandbox, $updatedBy);
+        saveAppSetting($db, 'duitku.enabled_payment_methods', json_encode($pgEnabledMethods), $updatedBy);
 
         $pgConfig['merchant_code'] = $pgMerchantCode;
         $pgConfig['api_key'] = $pgApiKey;
         $pgConfig['base_url'] = $pgBaseUrl;
         $pgConfig['sandbox'] = $pgSandbox;
+        $pgConfig['enabled_payment_methods'] = $pgEnabledMethods;
 
         $pgConfigSuccess = 'Konfigurasi Payment Gateway berhasil diperbarui.';
     }
@@ -654,6 +691,7 @@ try {
         'duitku.api_key',
         'duitku.base_url',
         'duitku.sandbox',
+        'duitku.enabled_payment_methods',
     ]);
 
     $seoConfig['site_title'] = (string) ($settings['seo.site_title'] ?? $seoConfig['site_title']);
@@ -753,6 +791,10 @@ try {
     if (isset($settings['duitku.api_key'])) $pgConfig['api_key'] = $settings['duitku.api_key'];
     if (isset($settings['duitku.base_url'])) $pgConfig['base_url'] = $settings['duitku.base_url'];
     if (isset($settings['duitku.sandbox'])) $pgConfig['sandbox'] = $settings['duitku.sandbox'];
+    if (isset($settings['duitku.enabled_payment_methods'])) {
+        $fromDb = normalizeDuitkuPaymentMethods($settings['duitku.enabled_payment_methods']);
+        if (!empty($fromDb)) $pgConfig['enabled_payment_methods'] = $fromDb;
+    }
 } catch (RuntimeException $e) {
     if ($postAction === 'save_seo_config') {
         $seoConfigError = $e->getMessage();
@@ -1869,6 +1911,19 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                                     <?php echo $pgConfig['sandbox'] === '1' ? 'checked' : ''; ?>>
                                 <label for="pg-sandbox" style="margin:0;cursor:pointer;">Mode Sandbox (direkomendasikan saat testing localhost/XAMPP)</label>
                             </div>
+                            <div class="form-group full">
+                                <label style="display:block;margin-bottom:.5rem;">Metode Pembayaran Aktif (V2)</label>
+                                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.4rem .9rem;padding:.75rem;border:1px solid var(--border-color);border-radius:10px;background:var(--bg-surface);max-height:230px;overflow:auto;">
+                                    <?php foreach ($duitkuPaymentMethodCatalog as $code => $name): ?>
+                                        <label style="display:flex;align-items:center;gap:.45rem;font-size:.84rem;cursor:pointer;">
+                                            <input type="checkbox" name="duitku_enabled_payment_methods[]" value="<?php echo htmlspecialchars($code, ENT_QUOTES, 'UTF-8'); ?>"
+                                                <?php echo in_array($code, $pgConfig['enabled_payment_methods'], true) ? 'checked' : ''; ?>>
+                                            <span><strong><?php echo htmlspecialchars($code, ENT_QUOTES, 'UTF-8'); ?></strong> - <?php echo htmlspecialchars($name, ENT_QUOTES, 'UTF-8'); ?></span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                                <small style="color:var(--text-secondary);font-size:.78rem;">Checklist ini membatasi channel yang boleh dipakai saat request transaksi Duitku V2.</small>
+                            </div>
                         </div>
                         <div style="margin-top:1.25rem;display:flex;gap:.75rem;align-items:center;">
                             <button type="submit" class="btn btn-primary">Simpan Konfigurasi</button>
@@ -1881,7 +1936,8 @@ $sessionPhoneNumber = $_SESSION['phone_number'] ?? '';
                         <strong style="color:var(--text-primary);">Status saat ini:</strong><br>
                         Merchant Code: <code><?php echo $pgConfig['merchant_code'] !== '' ? str_repeat('*', max(0, strlen($pgConfig['merchant_code']) - 4)) . substr($pgConfig['merchant_code'], -4) : '<em>belum diset</em>'; ?></code> &nbsp;|
                         API Key: <code><?php echo $pgConfig['api_key'] !== '' ? str_repeat('*', 8) . substr($pgConfig['api_key'], -4) : '<em>belum diset</em>'; ?></code> &nbsp;|
-                        Mode: <strong><?php echo $pgConfig['sandbox'] === '1' ? '<span style="color:#fbbf24">Sandbox</span>' : '<span style="color:#4ade80">Production</span>'; ?></strong>
+                        Mode: <strong><?php echo $pgConfig['sandbox'] === '1' ? '<span style="color:#fbbf24">Sandbox</span>' : '<span style="color:#4ade80">Production</span>'; ?></strong><br>
+                        Metode aktif: <code><?php echo htmlspecialchars(implode(', ', $pgConfig['enabled_payment_methods']), ENT_QUOTES, 'UTF-8'); ?></code>
                     </div>
                 </div>
             </section>
