@@ -40,6 +40,44 @@ function normalizeDuitkuPaymentMethods($raw): array
 }
 
 /**
+ * Konversi kode metode pembayaran Duitku ke nama tampilan.
+ *
+ * @param string $code  Kode 2-huruf (mis. 'SP', 'BC')
+ * @return string       Nama ramah (mis. 'QRIS ShopeePay', 'BCA Virtual Account')
+ */
+function duitkuMethodLabel(string $code): string
+{
+    static $catalog = [
+        'BC' => 'BCA Virtual Account',
+        'M2' => 'Mandiri Virtual Account',
+        'VA' => 'Maybank Virtual Account',
+        'I1' => 'BNI Virtual Account',
+        'B1' => 'CIMB Niaga Virtual Account',
+        'BT' => 'Permata Virtual Account',
+        'A1' => 'ATM Bersama',
+        'BR' => 'BRIVA',
+        'IR' => 'Indomaret',
+        'FT' => 'Retail (Pegadaian/ALFA/Pos)',
+        'OV' => 'OVO',
+        'DA' => 'DANA',
+        'SP' => 'QRIS ShopeePay',
+        'NQ' => 'QRIS Nobu',
+        'GQ' => 'QRIS Gudang Voucher',
+        'SQ' => 'QRIS Nusapay',
+        'VC' => 'Kartu Kredit',
+        'JP' => 'Jenius Pay',
+        'DN' => 'Indodana Paylater',
+        'AT' => 'ATOME',
+        'T1' => 'Tokopedia Card',
+        'T2' => 'Tokopedia E-Wallet',
+        'T3' => 'Tokopedia Lainnya',
+    ];
+
+    $upper = strtoupper(trim($code));
+    return $catalog[$upper] ?? ($upper !== '' ? $upper : '-');
+}
+
+/**
  * Get a singleton PDO database connection.
  */
 function getDB(): PDO

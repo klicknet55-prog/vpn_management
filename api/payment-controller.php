@@ -310,5 +310,11 @@ function handleHistory(PDO $db, int $userId): void
     $paymentModel = new Payment($db);
     $payments     = $paymentModel->getByUserId($userId);
 
+    foreach ($payments as &$p) {
+        $code = strtoupper(trim((string) ($p['payment_method'] ?? '')));
+        $p['payment_method_label'] = $code !== '' ? duitkuMethodLabel($code) : null;
+    }
+    unset($p);
+
     echo json_encode(['ok' => true, 'data' => $payments]);
 }

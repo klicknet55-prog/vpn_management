@@ -105,7 +105,8 @@ $planLabel = $payment['plan_label'] ?? '-';
 $amount = (int) ($payment['amount'] ?? 0);
 $paidAt = fmtDateId((string) ($payment['paid_at'] ?? ''));
 $expiredAt = fmtDateId($latestExpiresAt);
-$method = (string) ($payment['payment_method'] ?? '-');
+$methodRaw = (string) ($payment['payment_method'] ?? '');
+$method = $methodRaw !== '' ? duitkuMethodLabel($methodRaw) : '-';
 
 $sessionRoles = $_SESSION['roles'] ?? [];
 $isLoggedIn = !empty($_SESSION['logged_in']);

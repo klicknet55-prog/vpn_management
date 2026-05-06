@@ -223,7 +223,7 @@ $isSuccess   = ($status === 'success');
                             <div class="inv-row"><span class="label">No. Invoice</span><strong>${p.invoice_number}</strong></div>
                             <div class="inv-row"><span class="label">Paket</span><span>${p.plan_label || '—'}</span></div>
                             <div class="inv-row"><span class="label">Total Dibayar</span><span>Rp ${fmt(p.amount)}</span></div>
-                            <div class="inv-row"><span class="label">Metode</span><span>${p.payment_method || '—'}</span></div>
+                            <div class="inv-row"><span class="label">Metode</span><span>${p.payment_method_label || p.payment_method || '—'}</span></div>
                             <div class="inv-row"><span class="label">Tanggal</span><span>${fmtDateId(p.paid_at)}</span></div>
                         </div>`;
                     showState('paid');
