@@ -22,6 +22,7 @@ require_once __DIR__ . '/../system/seo.php';
 $vpnSubnetPrefix = '192.168.12';
 $vpnIpRangeStart = 2;
 $vpnIpRangeEnd   = 254;
+$vpnServerBaseUrl = '';
 try {
     require_once __DIR__ . '/../api/db.php';
     $db = getDB();
@@ -38,6 +39,12 @@ try {
             $vpnIpRangeEnd = min(254, (int) $row['config_value']);
         }
     }
+    $vpnApiRow = $db->query(
+        "SELECT base_url FROM api_configurations WHERE service_type = 'vpn' AND is_enabled = 1 ORDER BY updated_at DESC, id DESC LIMIT 1"
+    )->fetch(PDO::FETCH_ASSOC);
+    if ($vpnApiRow && !empty($vpnApiRow['base_url'])) {
+        $vpnServerBaseUrl = rtrim(trim($vpnApiRow['base_url']), '/');
+    }
 } catch (Throwable $e) {
     // Use defaults if DB unavailable
 }
@@ -53,6 +60,7 @@ try {
     <script>
         window.VPN_API = '../api/vpn-controller.php';
         window.VPN_PAGE_MODE = 'user';
+        window.VPN_SERVER_URL = <?php echo json_encode($vpnServerBaseUrl, JSON_UNESCAPED_SLASHES); ?>;
         window.VPN_SUBNET = <?php echo json_encode([
             'prefix'     => $vpnSubnetPrefix,
             'rangeStart' => $vpnIpRangeStart,
