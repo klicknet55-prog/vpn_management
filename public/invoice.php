@@ -200,7 +200,7 @@ $dashboardUrl = $isLoggedIn
     <div class="wrap">
         <section class="card">
             <h1 class="title">Detail Invoice</h1>
-            <p class="sub">Halaman publik untuk melihat status pembayaran tanpa login.</p>
+            <p class="sub">Informasi detail invoice dan status pembayaran Anda.</p>
 
             <?php if ($errorMessage !== ''): ?>
                 <div class="err"><?php echo htmlspecialchars($errorMessage, ENT_QUOTES, 'UTF-8'); ?></div>
@@ -214,7 +214,7 @@ $dashboardUrl = $isLoggedIn
                 <div class="row"><span class="k">Total</span><span>Rp <?php echo number_format($amount, 0, ',', '.'); ?></span></div>
                 <div class="row"><span class="k">Metode</span><span><?php echo htmlspecialchars($method, ENT_QUOTES, 'UTF-8'); ?></span></div>
                 <div class="row"><span class="k">Tanggal Bayar</span><span><?php echo htmlspecialchars($paidAt, ENT_QUOTES, 'UTF-8'); ?></span></div>
-                <div class="row"><span class="k">Expired Terbaru</span><span><?php echo htmlspecialchars($expiredAt, ENT_QUOTES, 'UTF-8'); ?></span></div>
+                <div class="row"><span class="k">Tanggal Expired</span><span><?php echo htmlspecialchars($expiredAt, ENT_QUOTES, 'UTF-8'); ?></span></div>
 
                 <div class="actions">
                     <a class="btn primary" href="<?php echo htmlspecialchars($dashboardUrl, ENT_QUOTES, 'UTF-8'); ?>">Ke Dashboard</a>
