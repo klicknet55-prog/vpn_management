@@ -450,8 +450,8 @@ $gowaScriptVer = file_exists(__DIR__ . '/../gowa-devices.js') ? filemtime(__DIR_
                 </div>
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:0.75rem;background:rgba(99,102,241,0.05);border-radius:8px;border:1px solid rgba(99,102,241,0.15);">
                     <div>
-                        <p style="font-weight:500;color:var(--text-primary);">Queue WA Messages</p>
-                        <p style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.25rem;">Aktifkan antrian untuk pengiriman pesan yang terkontrol</p>
+                        <p style="font-weight:600;color:#1f2937;margin:0;">Queue WA Messages</p>
+                        <p style="font-size:0.75rem;color:#6b7280;margin:0.25rem 0 0 0;">Aktifkan antrian untuk pengiriman pesan yang terkontrol</p>
                     </div>
                     <label style="position:relative;display:inline-flex;width:50px;height:28px;cursor:pointer;">
                         <input type="checkbox" id="settings-queue-enabled" style="position:absolute;opacity:0;cursor:pointer;width:100%;height:100%;">
