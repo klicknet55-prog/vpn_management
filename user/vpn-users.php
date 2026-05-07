@@ -575,5 +575,19 @@ function closeInfoModal(key) {
         </div>
     </div>
 </div>
+<script>
+function toggleDesktopDropdown(key){
+    var el = document.getElementById('desktop-dropdown-' + key);
+    if(!el) return;
+    var o = el.classList.contains('open');
+    document.querySelectorAll('.nav-item.has-dropdown.open').forEach(function(d){d.classList.remove('open');});
+    if(!o) el.classList.add('open');
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.nav-item.has-dropdown')) {
+        document.querySelectorAll('.nav-item.has-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+    }
+});
+</script>
 </body>
 </html>
