@@ -59,6 +59,12 @@ $gowaScriptVer = file_exists(__DIR__ . '/../gowa-devices.js') ? filemtime(__DIR_
         .mobile-group.open .mobile-group-arrow{transform:rotate(180deg)}
         .mobile-group-children{display:none;padding-left:1.25rem}
         .mobile-group.open .mobile-group-children{display:block}
+        /* Hide logout and theme toggle in nav bar on mobile, show only on desktop */
+        @media (max-width: 992px) {
+            .desktop-only {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -118,18 +124,18 @@ $gowaScriptVer = file_exists(__DIR__ . '/../gowa-devices.js') ? filemtime(__DIR_
                     </div>
                 </div>
                 <div class="nav-right">
-                    <div class="theme-toggle">
-                        <button class="theme-btn theme-btn-snow active" onclick="setTheme('snow')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg></button>
-                        <button class="theme-btn theme-btn-carbon" onclick="setTheme('carbon')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
+                    <div class="theme-toggle desktop-only">
+                        <button class="theme-btn theme-btn-snow active" onclick="setTheme('snow')" title="Snow Edition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg></button>
+                        <button class="theme-btn theme-btn-carbon" onclick="setTheme('carbon')" title="Carbon Edition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
                     </div>
                     <div class="account-menu-wrap" id="account-menu-wrap">
-                        <button class="user-menu" onclick="toggleAccountDropdown()"><div class="user-avatar">A</div><span class="user-name" data-current-user>Admin</span></button>
+                        <button class="user-menu" onclick="toggleAccountDropdown()"><div class="user-avatar">U</div><span class="user-name" data-current-user>User</span></button>
                         <div class="account-dropdown">
                             <button onclick="openAccountModal('edit-profile')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Edit Profil</button>
                             <button onclick="openAccountModal('change-password')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Ganti Password</button>
                         </div>
                     </div>
-                    <a href="../api/logout.php" class="btn-logout" title="Logout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></a>
+                    <a href="../api/logout.php" class="btn-logout desktop-only" title="Logout">Logout</a>
                     <button class="mobile-menu-btn" onclick="toggleMobileMenu()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
                 </div>
             </div>
@@ -572,13 +578,7 @@ $gowaScriptVer = file_exists(__DIR__ . '/../gowa-devices.js') ? filemtime(__DIR_
             </div>
         </div>
     </div>
-    <script>
-    function toggleDesktopDropdown(key){var el=document.getElementById('desktop-dropdown-'+key);if(!el)return;var o=el.classList.contains('open');document.querySelectorAll('.nav-item.has-dropdown.open').forEach(function(d){d.classList.remove('open');});if(!o)el.classList.add('open');}
-    document.addEventListener('click',function(e){if(!e.target.closest('.nav-item.has-dropdown')){document.querySelectorAll('.nav-item.has-dropdown.open').forEach(function(d){d.classList.remove('open');});}});
-    function toggleMobileGroup(key){var el=document.getElementById('mobile-group-'+key);if(el)el.classList.toggle('open');}
-    function openInfoModal(key){var ids={about:'modal-info-about',contact:'modal-info-contact',tc:'modal-info-tc'};var el=document.getElementById(ids[key]);if(el){el.style.display='flex';document.body.style.overflow='hidden';}}
-    function closeInfoModal(key){var ids={about:'modal-info-about',contact:'modal-info-contact',tc:'modal-info-tc'};var el=document.getElementById(ids[key]);if(el){el.style.display='none';document.body.style.overflow='';}}
-    </script>
+    <script src="../templatemo-daynight-script.js?v=<?php echo (int) (file_exists(__DIR__ . '/../templatemo-daynight-script.js') ? filemtime(__DIR__ . '/../templatemo-daynight-script.js') : time()); ?>"></script>
     <!-- Account Modals -->
     <div class="acct-modal-overlay" id="modal-edit-profile" onclick="if(event.target===this)closeAccountModal('modal-edit-profile')">
         <div class="acct-modal">
