@@ -40,6 +40,13 @@ require_once __DIR__ . '/../system/seo.php';
     </script>
     <link rel="stylesheet" href="../templatemo-daynight-style.css?v=<?php echo (int)(file_exists(__DIR__ . '/../templatemo-daynight-style.css') ? filemtime(__DIR__ . '/../templatemo-daynight-style.css') : time()); ?>">
     <style>
+        /* Hide logout and theme toggle in nav bar on mobile, show only on desktop */
+        @media (max-width: 992px) {
+            .desktop-only {
+                display: none !important;
+            }
+        }
+
         /* ── Subscription cards ── */
         .sub-status-card {
             border-radius: 14px;
@@ -190,7 +197,7 @@ require_once __DIR__ . '/../system/seo.php';
                     </div>
                 </div>
                 <div class="nav-right">
-                    <div class="theme-toggle">
+                    <div class="theme-toggle desktop-only">
                         <button class="theme-btn theme-btn-snow active" onclick="setTheme('snow')" title="Snow Edition">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
                         </button>
@@ -208,7 +215,7 @@ require_once __DIR__ . '/../system/seo.php';
                             <button onclick="openAccountModal('change-password')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Ganti Password</button>
                         </div>
                     </div>
-                    <a href="../api/logout.php" class="btn-logout" title="Logout">Logout</a>
+                    <a href="../api/logout.php" class="btn-logout desktop-only" title="Logout">Logout</a>
                     <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
                     </button>
@@ -336,7 +343,7 @@ require_once __DIR__ . '/../system/seo.php';
         </div>
     </div>
     <script>
-    function toggleDesktopDropdown(key){var el=document.getElementById('desktop-dropdown-'+key);if(!el)return;var o=el.classList.contains('open');document.querySelectorAll('.nav-item.has-dropdown.open').forEach(function(d){d.classList.remove('open');});if(!o)el.classList.add('open');}
+    function toggleDesktopDropdown(key){var el=document.getElementById('desktop-dropdown-'+key);if(!el)return;var o=el.classList.contains('open');document.querySelectorAll('.nav-item.has-dropdown').forEach(function(d){d.classList.remove('open');});if(!o)el.classList.add('open');}
     document.addEventListener('click',function(e){if(!e.target.closest('.nav-item.has-dropdown')){document.querySelectorAll('.nav-item.has-dropdown.open').forEach(function(d){d.classList.remove('open');});}});
     function toggleMobileGroup(key){var el=document.getElementById('mobile-group-'+key);if(el)el.classList.toggle('open');}
     function openInfoModal(key){var ids={about:'modal-info-about',contact:'modal-info-contact',tc:'modal-info-tc'};var el=document.getElementById(ids[key]);if(el){el.style.display='flex';document.body.style.overflow='hidden';}}
