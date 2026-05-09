@@ -124,6 +124,12 @@ try {
         .mobile-group.open .mobile-group-arrow{transform:rotate(180deg)}
         .mobile-group-children{display:none;padding-left:1.25rem}
         .mobile-group.open .mobile-group-children{display:block}
+        /* Hide logout and theme toggle in nav bar on mobile, show only on desktop */
+        @media (max-width: 992px) {
+            .desktop-only {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 <body>
