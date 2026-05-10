@@ -608,6 +608,25 @@ $gowaScriptVer = file_exists(__DIR__ . '/../gowa-devices.js') ? filemtime(__DIR_
             </div>
         </div>
     </div>
+    <script>
+        function toggleDesktopDropdown(key) {
+    var el = document.getElementById('desktop-dropdown-' + key);
+    if (!el) return;
+    var isOpen = el.classList.contains('open');
+    // close all dropdowns
+    document.querySelectorAll('.nav-item.has-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+    if (!isOpen) el.classList.add('open');
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.nav-item.has-dropdown')) {
+        document.querySelectorAll('.nav-item.has-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+    }
+});
+        function toggleMobileGroup(key) {
+    var el = document.getElementById('mobile-group-' + key);
+    if (el) el.classList.toggle('open');
+}
+    </script>
 </body>
 </html>
 
