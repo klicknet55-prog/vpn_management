@@ -53,8 +53,10 @@ try {
     }
     if ($method === 'POST' && $action === '' && !isset($_GET['device_id'])) {
         $db = getDB();
-        requireActiveSubscription($currentUser['id'], $db);
-        requireFeatureLimit($currentUser['id'], 'wa_device', $db);
+        if (!$currentUser['is_admin']) {
+            requireActiveSubscription($currentUser['id'], $db);
+            requireFeatureLimit($currentUser['id'], 'wa_device', $db);
+        }
         handleCreate($currentUser);
         return;
     }
