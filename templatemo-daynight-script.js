@@ -51,8 +51,8 @@ function updateThemeButtons(theme) {
 function getGreeting() {
     const hour = new Date().getHours();
     if (hour >= 3 && hour < 10) return 'Selamat Pagi';
-    if (hour < 13) return 'Selamat Siang';
-    if (hour < 17) return 'Selamat Sore';
+    if (hour >= 10 && hour < 15) return 'Selamat Siang';
+    if (hour >= 15 && hour < 18) return 'Selamat Sore';
     return 'Selamat Malam';
 }
 
