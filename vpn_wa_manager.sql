@@ -3,11 +3,11 @@
 -- Target: MySQL / MariaDB (XAMPP)
 -- =====================================================
 
-CREATE DATABASE IF NOT EXISTS vpn_wa_manager
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
+--CREATE DATABASE IF NOT EXISTS vpn_wa_manager
+  --CHARACTER SET utf8mb4
+  --COLLATE utf8mb4_unicode_ci;
 
-USE vpn_wa_manager;
+--USE vpn_wa_manager;
 
 -- =========================
 -- Master: Roles
