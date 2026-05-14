@@ -88,8 +88,10 @@ if (!defined('VPN_CONTROLLER_LIB_MODE')) {
             ]);
             break;
         case 'create_user':
-            requireActiveSubscription($currentUserId, $db);
-            requireFeatureLimit($currentUserId, 'vpn', $db);
+            if (!isCurrentUserAdmin()) {
+                requireActiveSubscription($currentUserId, $db);
+                requireFeatureLimit($currentUserId, 'vpn', $db);
+            }
             $vpnConfig = loadVpnApiConfig($db);
             handleCreateUser($db, $vpnConfig, $payload, $currentUserId);
             break;
@@ -121,8 +123,10 @@ if (!defined('VPN_CONTROLLER_LIB_MODE')) {
             handleListProxyRoutes($db, $currentUserId);
             break;
         case 'create_proxy_route':
-            requireActiveSubscription($currentUserId, $db);
-            requireFeatureLimit($currentUserId, 'proxy_route', $db);
+            if (!isCurrentUserAdmin()) {
+                requireActiveSubscription($currentUserId, $db);
+                requireFeatureLimit($currentUserId, 'proxy_route', $db);
+            }
             $vpnConfig = loadVpnApiConfig($db);
             handleCreateProxyRoute($db, $vpnConfig, $payload, $currentUserId);
             break;
