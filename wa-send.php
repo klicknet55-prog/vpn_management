@@ -105,7 +105,13 @@ if (strlen($phone) < 7 || strlen($phone) > 15) {
 
 try {
     $deviceId = (string) $account['device_id'];
-    $shouldUseQueue = waShouldUseQueue('user', $useQueue, $db);
+    // Override from API param if present, else use device DB status
+    $shouldUseQueue = null;
+    if ($useQueue !== null) {
+        $shouldUseQueue = $useQueue;
+    } else {
+        $shouldUseQueue = waDeviceQueueEnabled($db, $deviceId);
+    }
 
     if ($shouldUseQueue) {
         $queueId = enqueueWaMessage($db, $deviceId, $phone, $message, 'wa_send_public_api', 'user', [
