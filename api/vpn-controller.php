@@ -1454,7 +1454,7 @@ function handleSyncServer(PDO $db, array $vpnConfig, int $actorUserId): void
         }
     }
 
-    // --- Sync port forwardings ---
+    // --- Sync port forwardings (update only existing) ---
     $pfRes = vpnApiRequest($vpnConfig, 'GET', $vpnConfig['endpoint_port_forwardings']);
     if ($pfRes['ok']) {
         $serverPfs = [];
@@ -1470,34 +1470,36 @@ function handleSyncServer(PDO $db, array $vpnConfig, int $actorUserId): void
             $serverPfs = $pfData;
         }
 
-        $pfUpsert = $db->prepare(
-            "INSERT INTO vpn_port_forwardings
-                (name, protocol, listen_port, destination_ip, destination_port, status, created_at, updated_at)
-             VALUES
-                (:name, :protocol, :listen_port, :destination_ip, :destination_port, 'active', NOW(), NOW())
-             ON DUPLICATE KEY UPDATE
-                protocol = VALUES(protocol),
-                listen_port = VALUES(listen_port),
-                destination_ip = VALUES(destination_ip),
-                destination_port = VALUES(destination_port),
+        // Ambil semua nama port forwarding yang sudah ada di database
+        $existingNames = [];
+        $stmt = $db->query("SELECT name FROM vpn_port_forwardings");
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN, 0) as $n) {
+            $existingNames[$n] = true;
+        }
+
+        $pfUpdate = $db->prepare(
+            "UPDATE vpn_port_forwardings SET
+                protocol = :protocol,
+                listen_port = :listen_port,
+                destination_ip = :destination_ip,
+                destination_port = :destination_port,
                 status = 'active',
-                updated_at = NOW()"
+                updated_at = NOW()
+             WHERE name = :name"
         );
 
         foreach ($serverPfs as $pf) {
             if (!is_array($pf)) continue;
             $name = (string) ($pf['name'] ?? '');
-            if ($name === '') continue;
-            $pfUpsert->execute([
+            if ($name === '' || !isset($existingNames[$name])) continue; // hanya update jika sudah ada di DB
+            $pfUpdate->execute([
                 'name' => $name,
                 'protocol' => strtolower((string) ($pf['protocol'] ?? 'tcp')),
                 'listen_port' => (int) ($pf['listen_port'] ?? $pf['listen'] ?? 0),
                 'destination_ip' => (string) ($pf['destination_ip'] ?? $pf['dest_ip'] ?? ''),
                 'destination_port' => (int) ($pf['destination_port'] ?? $pf['dest_port'] ?? 0),
             ]);
-            if ($pfUpsert->rowCount() === 1) {
-                $pfAdded++;
-            } else {
+            if ($pfUpdate->rowCount() > 0) {
                 $pfUpdated++;
             }
         }
