@@ -627,6 +627,95 @@ function handleDisableUser(PDO $db, array $vpnConfig, array $payload, int $actor
     ]);
 }
 
+/**
+ * Helper: Delete a port forwarding by name, return [success, message]
+ */
+function deletePortForwardingByName(PDO $db, array $vpnConfig, string $name, int $actorUserId): array
+{
+    try {
+        // Check access if not admin
+        $isAdmin = isCurrentUserAdmin();
+        if (!$isAdmin) {
+            $stmt = $db->prepare('SELECT owner_user_id FROM vpn_port_forwardings WHERE name = :name LIMIT 1');
+            $stmt->execute(['name' => $name]);
+            $ownerRaw = $stmt->fetchColumn();
+            if ($ownerRaw === false) {
+                return ['success' => false, 'message' => 'Port forwarding tidak ditemukan.'];
+            }
+            if ((int) $ownerRaw !== $actorUserId) {
+                return ['success' => false, 'message' => 'Anda tidak memiliki akses ke port forwarding tersebut.'];
+            }
+        }
+
+        $endpoint = rtrim((string) ($vpnConfig['endpoint_port_forwardings'] ?? '/port-forwardings'), '/');
+        $res = vpnApiRequest($vpnConfig, 'DELETE', $endpoint . '/' . rawurlencode($name));
+
+        if (!$res['ok'] && $res['status'] !== 404) {
+            return ['success' => false, 'message' => 'VPN API delete port forwarding gagal: ' . $res['error']];
+        }
+
+        $stmt = $db->prepare('DELETE FROM vpn_port_forwardings WHERE name = :name');
+        $stmt->execute(['name' => $name]);
+
+        writeVpnAuditLog($db, $actorUserId, 'port_forwarding_delete', 'port_forwarding', $name, [
+            'name' => $name,
+            'actor_user_id' => $actorUserId,
+        ]);
+
+        if ($actorUserId > 0) {
+            afterFeatureDeleted($actorUserId, 'port_forwarding', $db);
+        }
+
+        return ['success' => true, 'message' => 'Port forwarding berhasil dihapus.'];
+    } catch (Throwable $e) {
+        return ['success' => false, 'message' => 'Gagal menghapus port forwarding: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * Helper: Delete a proxy route by name, return [success, message]
+ */
+function deleteProxyRouteByName(PDO $db, array $vpnConfig, string $name, int $actorUserId): array
+{
+    try {
+        $isAdmin = isCurrentUserAdmin();
+        if (!$isAdmin) {
+            $stmt = $db->prepare('SELECT owner_user_id FROM vpn_proxy_routes WHERE name = :name LIMIT 1');
+            $stmt->execute(['name' => $name]);
+            $ownerRaw = $stmt->fetchColumn();
+            if ($ownerRaw === false) {
+                return ['success' => false, 'message' => 'Proxy route tidak ditemukan.'];
+            }
+            if ((int) $ownerRaw !== $actorUserId) {
+                return ['success' => false, 'message' => 'Anda tidak memiliki akses ke proxy route tersebut.'];
+            }
+        }
+
+        $endpoint = rtrim((string) ($vpnConfig['endpoint_proxy_routes'] ?? '/proxy-routes'), '/');
+        $res = vpnApiRequest($vpnConfig, 'DELETE', $endpoint . '/' . rawurlencode($name));
+
+        if (!$res['ok'] && $res['status'] !== 404) {
+            return ['success' => false, 'message' => 'VPN API delete proxy route gagal: ' . $res['error']];
+        }
+
+        $stmt = $db->prepare('DELETE FROM vpn_proxy_routes WHERE name = :name');
+        $stmt->execute(['name' => $name]);
+
+        writeVpnAuditLog($db, $actorUserId, 'proxy_route_delete', 'proxy_route', $name, [
+            'name' => $name,
+            'actor_user_id' => $actorUserId,
+        ]);
+
+        if ($actorUserId > 0) {
+            afterFeatureDeleted($actorUserId, 'proxy_route', $db);
+        }
+
+        return ['success' => true, 'message' => 'Proxy route berhasil dihapus.'];
+    } catch (Throwable $e) {
+        return ['success' => false, 'message' => 'Gagal menghapus proxy route: ' . $e->getMessage()];
+    }
+}
+
 function handleEnableUser(PDO $db, array $vpnConfig, array $payload, int $actorUserId): void
 {
     $username = normalizeVpnName((string) ($payload['username'] ?? ''));
@@ -669,29 +758,69 @@ function handleDeleteUser(PDO $db, array $vpnConfig, array $payload, int $actorU
 
     assertVpnUserAccess($db, $username, $actorUserId);
 
-    $res = vpnApiRequest($vpnConfig, 'DELETE', $vpnConfig['endpoint_users'] . '/' . rawurlencode($username));
-    if (!$res['ok']) {
-        throw new RuntimeException('VPN API delete user gagal: ' . $res['error']);
+    // Ambil semua port forwarding milik user
+    $pfStmt = $db->prepare('SELECT name FROM vpn_port_forwardings WHERE destination_ip = (SELECT vpn_ip FROM vpn_users WHERE username = :username LIMIT 1)');
+    $pfStmt->execute(['username' => $username]);
+    $pfRows = $pfStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Ambil semua proxy route milik user
+    $prStmt = $db->prepare('SELECT name FROM vpn_proxy_routes WHERE port_forward_name IN (SELECT name FROM vpn_port_forwardings WHERE destination_ip = (SELECT vpn_ip FROM vpn_users WHERE username = :username LIMIT 1))');
+    $prStmt->execute(['username' => $username]);
+    $prRows = $prStmt->fetchAll(PDO::FETCH_ASSOC);
+
+    // Hapus proxy route terlebih dahulu
+    $deleteLog = [];
+    foreach ($prRows as $pr) {
+        $result = deleteProxyRouteByName($db, $vpnConfig, $pr['name'], $actorUserId);
+        $deleteLog[] = [
+            'type' => 'proxy_route',
+            'name' => $pr['name'],
+            'success' => $result['success'],
+            'message' => $result['message'],
+        ];
     }
 
-    $db->prepare('DELETE FROM vpn_users WHERE username = :username')->execute(['username' => $username]);
+    // Hapus port forwarding
+    foreach ($pfRows as $pf) {
+        $result = deletePortForwardingByName($db, $vpnConfig, $pf['name'], $actorUserId);
+        $deleteLog[] = [
+            'type' => 'port_forwarding',
+            'name' => $pf['name'],
+            'success' => $result['success'],
+            'message' => $result['message'],
+        ];
+    }
+
+    // Hapus user VPN
+    $res = vpnApiRequest($vpnConfig, 'DELETE', $vpnConfig['endpoint_users'] . '/' . rawurlencode($username));
+    $userDeleteSuccess = $res['ok'];
+    $userDeleteMsg = $res['ok'] ? 'VPN user berhasil dihapus.' : 'VPN API delete user gagal: ' . $res['error'];
+    if ($res['ok']) {
+        $db->prepare('DELETE FROM vpn_users WHERE username = :username')->execute(['username' => $username]);
+    }
 
     writeVpnAuditLog($db, $actorUserId, 'vpn_user_delete', 'vpn_user', $username, [
         'username' => $username,
+        'deleted_port_forwardings' => array_column($pfRows, 'name'),
+        'deleted_proxy_routes' => array_column($prRows, 'name'),
     ]);
 
     if ($actorUserId > 0) {
         afterFeatureDeleted($actorUserId, 'vpn', $db);
     }
 
+    $deleteLog[] = [
+        'type' => 'vpn_user',
+        'name' => $username,
+        'success' => $userDeleteSuccess,
+        'message' => $userDeleteMsg,
+    ];
+
     echo json_encode([
-        'status' => 'success',
-        'message' => 'VPN user berhasil dihapus.',
-        'code' => 200,
-        'data' => [
-            'username' => $username,
-            'upstream' => $res['data'],
-        ],
+        'status' => ($userDeleteSuccess ? 'success' : 'error'),
+        'message' => 'Proses penghapusan selesai.',
+        'code' => $userDeleteSuccess ? 200 : 500,
+        'delete_log' => $deleteLog,
     ]);
 }
 
