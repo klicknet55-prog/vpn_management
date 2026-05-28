@@ -579,6 +579,8 @@ $gowaScriptVer = file_exists(__DIR__ . '/../gowa-devices.js') ? filemtime(__DIR_
         </div>
     </div>
     <script src="../templatemo-daynight-script.js?v=<?php echo (int) (file_exists(__DIR__ . '/../templatemo-daynight-script.js') ? filemtime(__DIR__ . '/../templatemo-daynight-script.js') : time()); ?>"></script>
+    <!-- WA Device Manager Script -->
+    <script src="../gowa-devices.js?v=<?php echo (int) (file_exists(__DIR__ . '/../gowa-devices.js') ? filemtime(__DIR__ . '/../gowa-devices.js') : time()); ?>"></script>
     <!-- Account Modals -->
     <div class="acct-modal-overlay" id="modal-edit-profile" onclick="if(event.target===this)closeAccountModal('modal-edit-profile')">
         <div class="acct-modal">

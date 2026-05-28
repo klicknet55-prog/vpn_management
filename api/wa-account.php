@@ -1,4 +1,8 @@
 <?php
+// Aktifkan error reporting untuk debug
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 /**
  * WA Account REST API
  *
@@ -13,6 +17,8 @@ require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/wa-send-runtime.php';
 require_once __DIR__ . '/../system/middleware/subscription.php';
 
+
+// Jika ingin akses via REST API tanpa session, bisa disable session_start
 session_start();
 
 header('Content-Type: application/json');
@@ -24,7 +30,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 $method = strtoupper($_SERVER['REQUEST_METHOD']);
 $action = trim($_GET['action'] ?? '');
-$currentUser = requireAuthUser();
+
+// Cek jika request POST /api/wa-account.php?action=login (autentikasi via username/password)
+if ($method === 'POST' && $action === 'login') {
+    handleLogin();
+    return;
+}
+
+// Untuk endpoint lain, tetap gunakan session jika ada, atau cek autentikasi manual jika dikirim via body
+$currentUser = null;
+if (!empty($_SESSION['logged_in']) && !empty($_SESSION['user_id'])) {
+    $currentUser = requireAuthUser();
+}
 
 // Ensure queue_enabled column exists
 try {
@@ -35,7 +52,13 @@ try {
 }
 
 try {
+    // Cek autentikasi sebelum akses endpoint yang butuh user
     if ($method === 'GET' && $action === '') {
+        if (!$currentUser) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Unauthorized']);
+            return;
+        }
         handleList($currentUser);
         return;
     }
@@ -51,13 +74,33 @@ try {
         handleTestSend($currentUser);
         return;
     }
+
+    // Mendukung autentikasi via username/password di body jika session kosong
     if ($method === 'POST' && $action === '' && !isset($_GET['device_id'])) {
         $db = getDB();
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+        if (!$currentUser) {
+            // Jika tidak ada session, cek username & password dari body
+            $username = trim($input['username'] ?? '');
+            $password = trim($input['password'] ?? '');
+            if (!$username || !$password) {
+                http_response_code(401);
+                echo json_encode(['error' => 'Username & password required']);
+                return;
+            }
+            $user = authUserByUsernamePassword($username, $password, $db);
+            if (!$user) {
+                http_response_code(401);
+                echo json_encode(['error' => 'Invalid credentials']);
+                return;
+            }
+            $currentUser = $user;
+        }
         if (!$currentUser['is_admin']) {
             requireActiveSubscription($currentUser['id'], $db);
             requireFeatureLimit($currentUser['id'], 'wa_device', $db);
         }
-        handleCreate($currentUser);
+        handleCreate($currentUser, $input); // Kirim input agar bisa custom device_id
         return;
     }
     if ($method === 'POST' && $action === 'disconnect') {
@@ -277,11 +320,21 @@ function handleList(array $currentUser): void
     ]);
 }
 
-function handleCreate(array $currentUser): void
+
+/**
+ * Membuat device WA baru, mendukung custom device_id jika dikirim dari input
+ * @param array $currentUser
+ * @param array|null $input
+ */
+function handleCreate(array $currentUser, ?array $input = null): void
 {
-    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    // Ambil input dari parameter jika ada (REST), fallback ke body
+    if ($input === null) {
+        $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    }
     $label = trim($input['label'] ?? '');
     $webhook = trim($input['webhook'] ?? '');
+    $customDeviceIdInput = trim($input['device_id'] ?? '');
 
     if (!$label) {
         http_response_code(400);
@@ -294,9 +347,13 @@ function handleCreate(array $currentUser): void
     // Normalisasi label dan username: lowercase, spasi/non-alfanumerik jadi _
     $normLabel = strtolower(preg_replace('/[^a-z0-9]+/', '_', $label));
     $normUser = strtolower(preg_replace('/[^a-z0-9]+/', '_', $username));
-    // Tambahkan random string agar device_id selalu unik
-    $rand = bin2hex(random_bytes(3)); // 6 hex char
-    $customDeviceId = rtrim($normLabel . '_' . $normUser . '_' . $rand, '_');
+    // Device ID: jika dikirim dari input, gunakan, jika tidak, generate otomatis
+    if ($customDeviceIdInput) {
+        $customDeviceId = $customDeviceIdInput;
+    } else {
+        $rand = bin2hex(random_bytes(3)); // 6 hex char
+        $customDeviceId = rtrim($normLabel . '_' . $normUser . '_' . $rand, '_');
+    }
 
     $body = [
         'label' => $label,
@@ -306,6 +363,7 @@ function handleCreate(array $currentUser): void
         $body['webhook'] = $webhook;
     }
 
+    // Kirim ke GoWA
     $gowaRes = gowaRequest('POST', '/devices', $body);
 
     if (!$gowaRes['ok']) {
@@ -386,6 +444,7 @@ function handleCreate(array $currentUser): void
     $apiUrl = APP_URL . '/wa-send.php?'
         . 'phone=[number]&message=[text]&secret=' . $secret;
 
+    // Response JSON, mudah dipakai plugin
     echo json_encode([
         'ok' => true,
         'device_id' => $deviceId,
@@ -393,6 +452,62 @@ function handleCreate(array $currentUser): void
         'secret' => $secret,
         'api_url' => $apiUrl,
         'api_url_example' => str_replace(['[number]', '[text]'], ['628123456789', 'Hello!'], $apiUrl),
+    ]);
+}
+
+/**
+ * Autentikasi user via username & password (untuk REST API)
+ * @param string $username
+ * @param string $password
+ * @param PDO $db
+ * @return array|null
+ */
+function authUserByUsernamePassword(string $username, string $password, PDO $db): ?array
+{
+    // Query hanya berdasarkan email (karena kolom username tidak ada)
+    $stmt = $db->prepare('SELECT * FROM users WHERE email = :email LIMIT 1');
+    $stmt->execute(['email' => $username]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$user) return null;
+    // Ganti verifikasi password sesuai hash yang digunakan
+    if (!password_verify($password, $user['password_hash'])) return null;
+    $roles = [];
+    if (!empty($user['roles'])) {
+        $roles = is_array($user['roles']) ? $user['roles'] : explode(',', $user['roles']);
+    }
+    return [
+        'id' => (int) $user['id'],
+        'email' => (string) ($user['email'] ?? ''),
+        'full_name' => (string) ($user['full_name'] ?? 'User'),
+        'roles' => $roles,
+        'is_admin' => in_array('admin', $roles, true) || in_array('super_admin', $roles, true),
+    ];
+}
+
+/**
+ * Endpoint login opsional, jika ingin login via REST API
+ */
+function handleLogin(): void
+{
+    $input = json_decode(file_get_contents('php://input'), true) ?? [];
+    $username = trim($input['username'] ?? '');
+    $password = trim($input['password'] ?? '');
+    if (!$username || !$password) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Username & password required']);
+        return;
+    }
+    $db = getDB();
+    $user = authUserByUsernamePassword($username, $password, $db);
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Invalid credentials']);
+        return;
+    }
+    // Bisa return token/jwt jika ingin, atau data user saja
+    echo json_encode([
+        'ok' => true,
+        'user' => $user,
     ]);
 }
 
