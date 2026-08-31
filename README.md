@@ -228,3 +228,6 @@ Wajib dilakukan sebelum go live:
 4. Device tidak reconnect otomatis
 - Pastikan cron reconnect aktif
 - Pastikan konfigurasi GoWA valid
+
+
+<!-- Security scan triggered at 2026-08-31 17:17:24 -->
